@@ -93,14 +93,6 @@ public:
 
         return mapInfo;
     }
-
-//    static void setMapValue(vector<int> &matrix, int columns, int x, int y, int value) {
-//        matrix[x + y * columns] = value;
-//    }
-//
-//    static int getMapValue(vector<int> & matrix, int columns, int x, int y){
-//        return matrix[x + y * columns];
-//    }
 };
 
 void printMap(ArrayMap &matrix) {
