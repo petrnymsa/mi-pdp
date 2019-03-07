@@ -21,7 +21,29 @@ následujících k řádek obsahuje x,y souřadnice zakázaných políček
  */
 using namespace std;
 
-class Map{
+class ArrayMap {
+public:
+    int rows, columns;
+
+    ArrayMap(int rows, int columns)
+            : rows(rows), columns(columns), matrix(rows * columns) {
+
+    }
+
+    int getValue(int x, int y) {
+        return matrix[x + y * columns];
+    }
+
+    void setValue(int x, int y, int value) {
+        matrix[x + y * columns] = value;
+
+    }
+
+private:
+    vector<int> matrix;
+};
+
+class MapInfo {
 public:
     int rows;
     int columns;
@@ -30,102 +52,98 @@ public:
     int c1;
     int c2;
     int cn;
-    vector<int> matrix;
+
+    ArrayMap map;
 
     const static int FREE = 0;
-    const static int BLOCK = 1;
-    const static int TILE = 2;
-    const static int START = 3;
+    const static int BLOCK = -1;
+    const static int START = -2;
 
-    Map(int rows, int columns, int i1, int i2, int c1, int c2, int cn)
-         :rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), matrix(rows * columns)
-    {
+    MapInfo(int rows, int columns, int i1, int i2, int c1, int c2, int cn)
+            : rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), map(rows, columns) {
 
     }
 
-    int value(int row, int column){
-        return matrix[column + row * columns];
+    pair<int, int> findStart() {
+        for (int y = 0; y < rows; y++) {
+            for (int x = 0; x < columns; x++) {
+                if (map.getValue(x, y) == FREE)
+                    return pair<int, int>(x, y);
+            }
+        }
+
+        return pair<int, int>(-1, -1);
     }
 
-    void setValue(int row, int column, int value){
-        matrix[column + row * columns] = value;
+
+    static MapInfo *load(istream &is) {
+        int rows, columns, i1, i2, c1, c2, cn, k;
+
+        is >> rows >> columns;
+        is >> i1 >> i2 >> c1 >> c2 >> cn;
+        is >> k;
+
+        MapInfo *mapInfo = new MapInfo(rows, columns, i1, i2, c1, c2, cn);
+
+        int x, y;
+        for (int i = 0; i < k; i++) {
+            is >> x >> y;
+            mapInfo->map.setValue(x, y, MapInfo::BLOCK);
+        }
+
+        return mapInfo;
     }
+
+//    static void setMapValue(vector<int> &matrix, int columns, int x, int y, int value) {
+//        matrix[x + y * columns] = value;
+//    }
+//
+//    static int getMapValue(vector<int> & matrix, int columns, int x, int y){
+//        return matrix[x + y * columns];
+//    }
 };
 
-Map & loadInput(istream & is){
-    int rows, columns, i1, i2, c1, c2, cn, k;
-
-    is >> rows >> columns;
-    is >> i1 >> i2 >> c1 >> c2 >> cn;
-    is >> k;
-
-    Map * map = new Map(rows, columns, i1,i2, c1,c2,cn);
-    int x,y;
-    for(int i = 0; i < k ; i++){
-        is >> x >> y;
-     //   map->matrix[y + x * columns] = Map::BLOCK;
-     map->setValue(x,y,Map::BLOCK);
-    }
-
-    return *map;
-}
-
-void printMap(Map & map){
-    int i = 0;
-    for(const auto p : map.matrix){
-        switch(p){
-            case Map::FREE : cout << '.'; break;
-            case Map::BLOCK : cout << 'X'; break;
-            case Map::TILE : cout << 'O'; break;
-            case Map::START : cout << 'S'; break;
-            default:  cout << '.'; break;
+void printMap(ArrayMap &matrix) {
+    for (int y = 0; y < matrix.rows; y++) {
+        for (int x = 0; x < matrix.columns; x++) {
+            int p = matrix.getValue(x, y);
+            switch (p) {
+                case MapInfo::FREE :
+                    cout << '.';
+                    break;
+                case MapInfo::BLOCK :
+                    cout << 'X';
+                    break;
+                case MapInfo::START :
+                    cout << 'S';
+                    break;
+                default:
+                    cout << p;
+                    break;
+            }
         }
-
-        i++;
-        if(i == map.columns){
-            i = 0;
-            cout << endl;
-        }
-
+        cout << endl;
     }
 }
 
-pair<int,int> findStart(Map & map){
-    for(int row = 0; row < map.rows; row++){
-        for(int col = 0; col < map.columns; col++){
-            if(map.value(row, col) == Map::FREE)
-                return pair<int,int>(row, col);
-        }
-    }
-
-    return pair<int,int>(-1,-1);
-
-}
 
 int main(int argc, char **argv) {
-    Map * mapPtr;
+    MapInfo *mapInfo;
 
-    if(argc == 2){    //load from file
+    if (argc == 2) {    //load from file
         ifstream ifile(argv[1], ios::in);
-        if(ifile){
-            mapPtr = &loadInput(ifile);
-        }
-        else{
+        if (ifile) {
+            mapInfo = MapInfo::load(ifile);
+        } else {
             cout << "Problem with opening file. Exit." << endl;
             return -1;
         }
+    } else {
+        mapInfo = MapInfo::load(cin);
     }
-    else{
-        mapPtr = &loadInput(cin);
-    }
 
-    Map map = *mapPtr;
-
-    pair<int,int> free = findStart(map);
-    map.setValue(free.first, free.second, Map::START);
-
-    printMap(map);
-
-    delete mapPtr;
+    printMap(mapInfo->map);
+    cout << mapInfo->map.getValue(2,0) << endl;
+    delete mapInfo;
     return 0;
 }
