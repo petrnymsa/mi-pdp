@@ -66,6 +66,37 @@ public:
         return c1 * i1_cnt + c2 * i2_cnt + cn * not_covered;
     }
 
+    pair<int, int> nextCoordinates(const int &x, const int &y) const {
+        if (x + 1 < columns)
+            return make_pair(x + 1, y);
+        else if (y + 1 < rows)
+            return make_pair(0, y + 1);
+
+        return make_pair(-1, -1);
+    }
+
+    int computeMaxPrice(int number)
+    {
+        // vraci maximalni cenu pro "number" nevyresenych policek
+        // returns the maximal price for the "number" of unsolved squares
+        int i,x;
+        int max=c2*(number/i2);
+        int zb=number%i2;
+        max+=c1*(zb/i1);
+        zb=zb%i1;
+        max+=zb*cn;
+        for(i=0;i<(number/i2);i++)
+        {
+            x=c2*i;
+            zb=number-i*i2;
+            x+=c1*(zb/i1);
+            zb=zb%i1;
+            x+=zb*cn;
+            if (x>max) max=x;
+        }
+        return max;
+    }
+
     static MapInfo *load(istream &is) {
         int rows, columns, i1, i2, c1, c2, cn, k;
 
@@ -144,7 +175,6 @@ public:
         pair<int, int> start = mapInfo.findStart();
         solveInternal(mapInfo.map, start.first, start.second, 0, 0, mapInfo.startUncovered, 1);
 
-
         //TODO tohle asi nechci
         for(int x = 0; x < solverResult->map.columns; x++){
             for(int y = 0; y < solverResult->map.rows;y++){
@@ -168,6 +198,13 @@ private:
         //TODO staci zde pocitat nejlepsi ?
         //TODO pokladat v ramci volani rekurze nebo pred? viz priklad
         //TODO vypoictat nepokryta policka ve vysledku na konci nebo behem vypoctu?
+
+        /*
+         * TODO
+         * 4 moznosti: H1, V1, V2, H2, zamerne nic nepolozit
+         * polozeni az v ramci zanoreni
+         */
+
         int currentPrice = mapInfo.computePrice(i1_cnt, i2_cnt, uncovered);
         if (currentPrice > solverResult->price) {
             solverResult->map = map;
@@ -179,7 +216,7 @@ private:
             i1_cnt++;
             uncovered -= mapInfo.i1;
         }
-        pair<int, int> next = nextCoordinates(x, y);
+        pair<int, int> next = mapInfo.nextCoordinates(x, y);
         if (next.first == -1) // on the right down corner
             return;
 
@@ -192,7 +229,7 @@ private:
             i1_cnt++;
             uncovered -= mapInfo.i1;
         }
-        next = nextCoordinates(x, y);
+        next = mapInfo.nextCoordinates(x, y);
 
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,nextTileId);
         printMap(map, x, y);
@@ -202,7 +239,7 @@ private:
             i2_cnt++;
             uncovered -= mapInfo.i2;
         }
-        next = nextCoordinates(x, y);
+        next = mapInfo.nextCoordinates(x, y);
         printMap(map, x, y);
 
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,nextTileId);
@@ -215,20 +252,11 @@ private:
             if (map.getValue(x, y) == MapInfo::FREE) //TODO zatim nefunkcni
                 solverResult->empty.insert(make_pair(x,y));
         }
-        next = nextCoordinates(x, y);
+        next = mapInfo.nextCoordinates(x, y);
         printMap(map, x, y);
 
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,nextTileId);
-    }
-
-    pair<int, int> nextCoordinates(const int &x, const int &y) const {
-        if (x + 1 < mapInfo.columns)
-            return make_pair(x + 1, y);
-        else if (y + 1 < mapInfo.rows)
-            return make_pair(0, y + 1);
-
-        return make_pair(-1, -1);
-    }
+    }   
 
     bool tryPlaceHorizontal(ArrayMap &map, int tile, const int &x, const int &y, int & nextTileId) {
         tile--;
@@ -270,7 +298,6 @@ private:
         cout << "CX: " << cx << " CY: " << cy << endl;
         cout << matrix << endl;
     }
-
 };
 // -----------------------------------------------------------------------------------------------------------------
 int main(int argc, char **argv) {
@@ -287,6 +314,8 @@ int main(int argc, char **argv) {
     } else {
         mapInfo = MapInfo::load(cin);
     }
+
+    //cout << mapInfo->map << endl;
 
     Solver solver(*mapInfo);
 
