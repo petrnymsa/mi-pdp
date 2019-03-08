@@ -1,26 +1,11 @@
 #include <iostream>
 #include <vector>
+#include <set>
 #include <sstream>
 #include <fstream>
 
-/*
- * m >= n >= 10 = rozměry obdélníkové mřížky R[1..m,1..n], skládající se z m x n políček.
-3 < i1 < n = počet políček tvořících dlaždice tvaru písmene I a délky i1 (= tvaru I1).
-3 < i2 < n = počet políček tvořících dlaždice tvaru písmene I a délky i2 (= tvaru I2), i1 < i2 .
-3 < c1 < n = cena bezkolizního umístění dlaždice tvaru I1.
-3 < c2 < n = cena bezkolizního umístění dlaždice tvaru I2, c1 < c2.
-cn < 0 = cena (penalizace) políčka nepokrytého žádnou dlaždicí.
-k < 0.3*m*n = počet zakázaných políček v mřížce R.
-D[1..k] = pole souřadnic k zakázaných políček rozmístěných v mřížce R.
- *
- *
- * 1. řádka:celá čísla m a n = rozměry obdélníkové mřížky (počet řádků a sloupců)
-další řádka: (pouze pro zadání POI) celá čísla i1, i2, c1, c2, cn= viz zadání úlohy POI
-další řádka: číslo k = počet zakázaných políček v mřížce
-následujících k řádek obsahuje x,y souřadnice zakázaných políček
- */
 using namespace std;
-
+// ------------------------------------------------------------------------------------------------------------------
 class ArrayMap {
 public:
     int rows, columns;
@@ -31,11 +16,11 @@ public:
     }
 
     int getValue(const int &x, const int &y) const {
-        return matrix[x + y * rows];
+        return matrix[x + y * columns];
     }
 
     void setValue(const int &x, const int &y, const int value) {
-        matrix[x + y * rows] = value;
+        matrix[x + y * columns] = value;
     }
 
     friend ostream & operator << (ostream & os, const ArrayMap & map);
@@ -43,7 +28,7 @@ public:
 private:
     vector<int> matrix;
 };
-
+// ------------------------------------------------------------------------------------------------------------------
 class MapInfo {
 public:
     int rows;
@@ -101,10 +86,10 @@ public:
         return mapInfo;
     }
 };
-
+// ------------------------------------------------------------------------------------------------------------------
 class SolverResult {
 public:
-    vector<pair<int, int>> empty;
+    set<pair<int, int>> empty;
     int price;
     ArrayMap map;
 
@@ -147,18 +132,26 @@ ostream & operator << (ostream & os, const ArrayMap & map){
 
     return os;
 }
-
+// ------------------------------------------------------------------------------------------------------------------
 class Solver {
 public:
     Solver(MapInfo &mapInfo)
             : mapInfo(mapInfo) {
-
     }
 
     SolverResult & solve() {
         solverResult = new SolverResult(mapInfo.map);
         pair<int, int> start = mapInfo.findStart();
         solveInternal(mapInfo.map, start.first, start.second, 0, 0, mapInfo.startUncovered, 1);
+
+
+        //TODO tohle asi nechci
+        for(int x = 0; x < solverResult->map.columns; x++){
+            for(int y = 0; y < solverResult->map.rows;y++){
+                if(solverResult->map.getValue(x,y) == MapInfo::FREE)
+                    solverResult->empty.insert(make_pair(x,y));
+            }
+        }
 
         return *solverResult;
     }
@@ -167,17 +160,14 @@ public:
         delete solverResult;
     }
 
-
-
 private:
     MapInfo &mapInfo;
-
-
     SolverResult *solverResult;
 
     void solveInternal(ArrayMap map, int x, int y, int i1_cnt, int i2_cnt, int uncovered, int nextTileId) {
         //TODO staci zde pocitat nejlepsi ?
         //TODO pokladat v ramci volani rekurze nebo pred? viz priklad
+        //TODO vypoictat nepokryta policka ve vysledku na konci nebo behem vypoctu?
         int currentPrice = mapInfo.computePrice(i1_cnt, i2_cnt, uncovered);
         if (currentPrice > solverResult->price) {
             solverResult->map = map;
@@ -222,8 +212,8 @@ private:
             i2_cnt++;
             uncovered -= mapInfo.i2;
         } else { //add current x,y to blacklist if it is empty
-            if (map.getValue(x, y) == MapInfo::FREE)
-                solverResult->empty.emplace_back(x, y);
+            if (map.getValue(x, y) == MapInfo::FREE) //TODO zatim nefunkcni
+                solverResult->empty.insert(make_pair(x,y));
         }
         next = nextCoordinates(x, y);
         printMap(map, x, y);
@@ -279,40 +269,10 @@ private:
     void printMap(ArrayMap &matrix, int cx, int cy) {
         cout << "CX: " << cx << " CY: " << cy << endl;
         cout << matrix << endl;
-//        for (int y = 0; y < matrix.rows; y++) {
-//            for (int x = 0; x < matrix.columns; x++) {
-////                if (cx == x && cy == y) {
-////                    cout << '*';
-////                    continue;
-////                }
-//
-//                int p = matrix.getValue(x, y);
-//
-//                switch (p) {
-//                    case MapInfo::FREE :
-//                        cout << '.';
-//                        break;
-//                    case MapInfo::BLOCK :
-//                        cout << 'X';
-//                        break;
-//                    case MapInfo::START :
-//                        cout << 'S';
-//                        break;
-//                    default:
-//                        cout << p;
-//                        break;
-//                }
-//            }
-//            cout << endl;
-//        }
-
-      //  cout << endl;
     }
 
 };
-
-
-
+// -----------------------------------------------------------------------------------------------------------------
 int main(int argc, char **argv) {
     MapInfo *mapInfo;
 
