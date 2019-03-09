@@ -29,6 +29,10 @@ public:
         }
     }
 
+    bool freeBlock(const int &x, const int &y) const{
+        return getValue(x,y) == 0;
+    }
+
     int getValue(const int &x, const int &y) const {
         assert(x < columns);
         assert(y < rows);
@@ -40,6 +44,29 @@ public:
         assert(y < rows);
         matrix[x + y * columns] = value;
     }
+
+
+
+    pair<int, int> nextCoordinates(const int &x, const int &y) const {
+        if (x + 1 < columns)
+            return make_pair(x + 1, y);
+        else if (y + 1 < rows)
+            return make_pair(0, y + 1);
+
+        return make_pair(-1, -1);
+    }
+
+    pair<int,int> prevCoordinates(const int &x, const int &y) const{
+        if(x - 1 >= 0)
+            return make_pair(x-1,y);
+        else
+            return make_pair(columns-1,y-1);
+    }
+
+    bool isOnRightBottomCorner(const int &x, const int &y) {
+        return x == columns - 1 && y == rows - 1;
+    }
+
 
     friend ostream &operator<<(ostream &os, const ArrayMap &map);
 
@@ -85,20 +112,7 @@ public:
         return c1 * i1_cnt + c2 * i2_cnt + cn * not_covered;
     }
 
-    pair<int, int> nextCoordinates(const int &x, const int &y) const {
-        if (x + 1 < columns)
-            return make_pair(x + 1, y);
-        else if (y + 1 < rows)
-            return make_pair(0, y + 1);
-
-        return make_pair(-1, -1);
-    }
-
-    bool isOnRightBottomCorner(const int &x, const int &y) {
-        return x == columns - 1 && y == rows - 1;
-    }
-
-    int computeMaxPrice(int number) {
+    int computeUpperPrice(int number) {
         // vraci maximalni cenu pro "number" nevyresenych policek
         // returns the maximal price for the "number" of unsolved squares
         int i, x;
@@ -192,13 +206,13 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
 class Solver {
 public:
     Solver(MapInfo &mapInfo)
-            : mapInfo(mapInfo) {
+            : info(mapInfo) {
     }
 
     SolverResult &solve() {
-        best = new SolverResult(mapInfo.map);
-        pair<int, int> start = mapInfo.findStart();
-        solveInternal(mapInfo.map, start.first, start.second, 0, 0, mapInfo.startUncovered,0, 1, TILE_SIZE_NULL, true, make_pair(0,0));
+        best = new SolverResult(info.map);
+        pair<int, int> start = info.findStart();
+        solveInternal(info.map, start.first, start.second, 0, 0, info.startUncovered,0, 1, TILE_SIZE_NULL, true);
 
         //TODO tohle asi nechci
         for (int x = 0; x < best->map.columns; x++) {
@@ -216,27 +230,20 @@ public:
     }
 
 private:
-    MapInfo &mapInfo;
+    MapInfo &info;
     SolverResult *best;
     const int TILE_SIZE_NULL = 0;
 
-    void solveInternal(ArrayMap map, int x, int y, int i1_cnt, int i2_cnt, int uncovered, int skipped, int nextTileId, int tileSize,
-                       bool horizontal, pair<int,int> tilePosition) {
-        /*
-         * TODO
-         * vypocitat aktualni cenu
-         * vypocitat max cenu - pripadne navrat
-         * 4 moznosti: H1, V1, V2, H2, zamerne nic nepolozit
-         * polozeni az v ramci zanoreni
-         */
+    void solveInternal(ArrayMap map, int x, int y, int i1_cnt, int i2_cnt, int uncovered, int skipped, int nextTileId, int tileSize,bool horizontal) {
 
         if (tileSize != TILE_SIZE_NULL) {  // place new
             uncovered-= tileSize;
-            if(tileSize == mapInfo.i1)
+            if(tileSize == info.i1)
                 i1_cnt++;
             else
                 i2_cnt++;
 
+            pair<int,int> tilePosition = map.prevCoordinates(x,y);
             if(horizontal)
                 placeHorizontal(map, tileSize, tilePosition.first, tilePosition.second, nextTileId);
             else
@@ -245,48 +252,51 @@ private:
             nextTileId++;
         }
 
-        int maxPrice = mapInfo.computeMaxPrice(uncovered - skipped);
-        int currentPrice = mapInfo.computePrice(i1_cnt, i2_cnt, uncovered);
+        int upperPrice = info.computeUpperPrice(uncovered);
+        int currentPrice = info.computePrice(i1_cnt, i2_cnt, skipped);
 
+        printMap(map, x,y, currentPrice, uncovered, skipped, tileSize, horizontal);
+        //TODO this shit
+//        if(currentPrice - info.cn*uncovered + info.cn*skipped + upperPrice <= best->price) {
+//            cout << "CUT" << endl << endl;
+//            return;
+//        }
+        //TODO kontrola na zacatku pred pokladanim?
+        if (map.isOnRightBottomCorner(x, y)) {
+            if (currentPrice > best->price) {
+                best->map = map;
+                best->price = currentPrice;
+            }
+            return;
+        }
+
+        pair<int, int> next = map.nextCoordinates(x, y);
+
+        //place H I1
+        bool canPlace = tryPlaceHorizontal(map, info.i1, x, y);
+        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, !canPlace && map.freeBlock(x,y) ? skipped + 1 : skipped, nextTileId, canPlace ? info.i1 : TILE_SIZE_NULL, true);
+
+        //place V I1
+        canPlace = tryPlaceVertical(map, info.i1, x, y);
+        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,!canPlace && map.freeBlock(x,y) ? skipped + 1 : skipped, nextTileId, canPlace ? info.i1 : TILE_SIZE_NULL, false);
+
+        //place H I2
+        canPlace = tryPlaceHorizontal(map, info.i2, x, y);
+        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,!canPlace && map.freeBlock(x,y) ? skipped + 1 : skipped, nextTileId, canPlace ? info.i2 : TILE_SIZE_NULL, true);
+
+        //place V I2
+        canPlace = tryPlaceVertical(map, info.i2, x, y);
+        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,!canPlace && map.freeBlock(x,y) ? skipped + 1 : skipped, nextTileId, canPlace ? info.i2 : TILE_SIZE_NULL, false);
+        //TODO pokud se zvysi skipped, nesnizi se uncovered (to je ok?, je skipped podmnozina?)
+        //TODO navic skipped se pocita pravd. spatne
+       //skip current
+        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, map.freeBlock(x,y) ? skipped + 1 : skipped, nextTileId, TILE_SIZE_NULL, true);
+
+        //TODO kontrola nejlepsi ceny taky tady?
         if (currentPrice > best->price) {
             best->map = map;
             best->price = currentPrice;
         }
-
-        printMap(map, x,y, currentPrice);
-
-        if(currentPrice + maxPrice <= best->price)
-            return;
-
-        if (mapInfo.isOnRightBottomCorner(x, y))
-            return;
-
-        pair<int, int> next = mapInfo.nextCoordinates(x, y);
-
-        bool placed = false;
-        //place H I1
-        bool canPlace = tryPlaceHorizontal(map, mapInfo.i1, x, y);
-        placed = canPlace;
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,skipped, nextTileId, canPlace ? mapInfo.i1 : TILE_SIZE_NULL, true, make_pair(x,y));
-
-        //place V I1
-        canPlace = tryPlaceVertical(map, mapInfo.i1, x, y);
-        placed = canPlace || placed;
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,skipped, nextTileId, canPlace ? mapInfo.i1 : TILE_SIZE_NULL, false,make_pair(x,y));
-
-        //place H I2
-        canPlace = tryPlaceHorizontal(map, mapInfo.i2, x, y);
-        placed = canPlace || placed;
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,skipped, nextTileId, canPlace ? mapInfo.i2 : TILE_SIZE_NULL, true,make_pair(x,y));
-
-        //place V I2
-        canPlace = tryPlaceVertical(map, mapInfo.i2, x, y);
-        placed = canPlace || placed;
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered,skipped, nextTileId, canPlace ? mapInfo.i2 : TILE_SIZE_NULL, false,make_pair(x,y));
-
-        //TODO do not place anything --> add to blacklist, how?
-
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, placed ? skipped : skipped + 1, nextTileId, TILE_SIZE_NULL, true,make_pair(x,y));
     }
 
     bool tryPlaceHorizontal(const ArrayMap &map, int tile, const int &x, const int &y) const {
@@ -325,9 +335,11 @@ private:
             map.setValue(x, i, id);
     }
 
-    void printMap(ArrayMap &matrix, int cx, int cy, int price) {
-        cout << "CX: " << cx << " CY: " << cy << " P: " << price << " B: " << best->price << endl;
-        cout << matrix << endl;
+    void printMap(const ArrayMap &matrix, const int & cx, const int & cy, const int & price,const int & uncovered,
+            const int & skipped, const int & tileSize, const bool & horizontal) const {
+        cout << "X: " << cx << " Y: " << cy << " P: " << price << " B: " << best->price <<
+                " U: " << uncovered << " S: " << skipped << " T: " << tileSize << " H: " << horizontal << endl;
+        cout << matrix;
     }
 };
 
@@ -347,7 +359,7 @@ int main(int argc, char **argv) {
         mapInfo = MapInfo::load(cin);
     }
 
-    //cout << mapInfo->map << endl;
+    //cout << info->map << endl;
 
     Solver solver(*mapInfo);
 
