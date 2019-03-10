@@ -12,8 +12,9 @@ class ArrayMap {
 public:
     int rows, columns;
     int n;
+
     ArrayMap(const int rows, const int columns)
-            : rows(rows), columns(columns),n(rows*columns) {
+            : rows(rows), columns(columns), n(rows * columns) {
         matrix = new int[n];
 //        for(int i = 0; i < rows * columns; i++)
 //            matrix[i] = 0;
@@ -24,13 +25,13 @@ public:
 
     }
 
-    void writeCopy(const ArrayMap & copy){
+    void writeCopy(const ArrayMap &copy) {
         this->rows = copy.rows;
         this->columns = copy.columns;
         this->n = copy.n;
 
         this->matrix = new int[n];
-        for(int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++)
             this->matrix[i] = copy.matrix[i];
     }
 
@@ -44,23 +45,22 @@ public:
 //        for(int x = 0; x < columns; x++)
 //            for(int y = 0; y < rows; y++)
 //                matrix[x][y] = copy.matrix[x][y];
-       // this->matrix = copy.matrix;
-      //  this->matrix = new int[rows*columns];
-     //   std::copy(copy.matrix, copy.matrix + (rows*columns), matrix);
+        // this->matrix = copy.matrix;
+        //  this->matrix = new int[rows*columns];
+        //   std::copy(copy.matrix, copy.matrix + (rows*columns), matrix);
     }
 
-    ArrayMap& operator = (const ArrayMap &copy)
-    {
-        if(this == &copy)
+    ArrayMap &operator=(const ArrayMap &copy) {
+        if (this == &copy)
             return *this;
-        delete [] matrix;
+        delete[] matrix;
         writeCopy(copy);
         return *this;
     }
 
-    ~ArrayMap(){
-    //    if(matrix != nullptr)
-       delete [] matrix;
+    ~ArrayMap() {
+        //    if(matrix != nullptr)
+        delete[] matrix;
     }
 
     bool freeBlock(const int &x, const int &y) const {
@@ -71,14 +71,14 @@ public:
 //        assert(x < columns && x >= 0);
 //        assert(y < rows && y >= 0);
         return matrix[x + y * columns];
-     //  return matrix[x][y];
+        //  return matrix[x][y];
     }
 
     void setValue(const int &x, const int &y, const int value) {
-     //   assert(x < columns);
-     //   assert(y < rows);
+        //   assert(x < columns);
+        //   assert(y < rows);
         matrix[x + y * columns] = value;
-     // matrix[x][y] = value;
+        // matrix[x][y] = value;
     }
 
 
@@ -106,8 +106,8 @@ public:
 
 private:
     //vector<int> matrix;
-    int * matrix;
-  // int matrix[20][20];
+    int *matrix;
+    // int matrix[20][20];
 };
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -247,8 +247,8 @@ public:
         best = new SolverResult(info.map);
 
         pair<int, int> start = info.findStart();
-    //    printMap(info.map, 0,0,0,0,0);
-        solveInternal(info.map, start.first, start.second, 0, 0, info.startUncovered, 0);
+        //    printMap(info.map, 0,0,0,0,0);
+        solveInternal(info.map, start.first, start.second, 0, info.startUncovered);
 
         //TODO tohle asi nechci
         for (int x = 0; x < best->map.columns; x++) {
@@ -271,80 +271,73 @@ private:
     const int TILE_NULL = 0;
     int nextId = 0;
 
-    int jumpToNextAvailableXAfterTile(const int & x, const int & tile){
-        if(x + tile - 1 < info.columns)
-            return x+ tile - 1;
+    int jumpToNextAvailableXAfterTile(const int &x, const int &tile) {
+        if (x + tile - 1 < info.columns)
+            return x + tile - 1;
         else return x;
     }
 
-    void solveInternal(ArrayMap & map, const int & x, const int & y, int i1_cnt, int i2_cnt, int uncovered, int skipped) {
+
+
+    void solveInternal(ArrayMap &map, const int &x, const int &y, int price, int uncovered) {
 
         int upperPrice = info.computeUpperPrice(uncovered);
-        int currentPrice = info.computePrice(i1_cnt, i2_cnt, uncovered);
 
-      //  printMap(map,x,y,currentPrice, uncovered,skipped);
+       // printMap(map, x, y, price, uncovered);
 
-        if(currentPrice + upperPrice < best->price) {
+        if (price + upperPrice < best->price) {
             return;
         }
 
         if (map.isOnRightBottomCorner(x, y)) {
-            if (currentPrice > best->price) {
+            if (price > best->price) {
                 best->map = map;
-                best->price = currentPrice;
+                best->price = price;
             }
             return;
         }
 
-//        pair<int, int> next = map.nextCoordinates(x, y);
-//
 //        //find next free X space
+        pair<int, int> next = map.nextCoordinates(x, y);
 //        while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
 //            next = map.nextCoordinates(next.first, next.second);
-        pair<int, int> next = map.nextCoordinates(x, y);
-          while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-              next = map.nextCoordinates(next.first, next.second);
 
-        //place H I1
-        bool placed = tryPlaceHorizontal(map,info.i1, x,y);
-        if(next.first != 0 && placed){ //TODO check it later
-            next.first = jumpToNextAvailableXAfterTile(next.first, info.i1);
+        if (map.freeBlock(x, y)) {
+
+            //place H I2
+            bool placed = tryPlaceHorizontal(map, info.i2, x, y);
+            solveInternal(map, next.first, next.second, placed ? price + info.c2 : price + info.cn,
+                          placed ? uncovered - info.i2 : uncovered - 1);
+            if (placed)
+                removeHorizontal(map, info.i2, x, y);
+
+            //place H I1
+            placed = tryPlaceHorizontal(map, info.i1, x, y);
+            solveInternal(map, next.first, next.second, placed ? price + info.c1 : price + info.cn,
+                          placed ? uncovered - info.i1 : uncovered - 1);
+            if (placed)
+                removeHorizontal(map, info.i1, x, y);
+
+            //place V I2
+            placed = tryPlaceVertical(map, info.i2, x, y);
+            solveInternal(map, next.first, next.second, placed ? price + info.c2 : price + info.cn,
+                          placed ? uncovered - info.i2 : uncovered - 1);
+            if (placed)
+                removeVertical(map, info.i2, x, y);
+
+            //place V I1
+            placed = tryPlaceVertical(map, info.i1, x, y);
+            solveInternal(map, next.first, next.second, placed ? price + info.c1 : price + info.cn,
+                          placed ? uncovered - info.i1 : uncovered - 1);
+            if (placed)
+                removeVertical(map, info.i1, x, y);
+
+            //SKIP on purpose
+            solveInternal(map, next.first, next.second, price + info.cn, uncovered - 1);
+        } else { // standing on forbiden or placed tile
+            solveInternal(map, next.first, next.second, price, uncovered);
         }
-        solveInternal(map, next.first, next.second, placed ? i1_cnt + 1 : i1_cnt, i2_cnt, placed ? uncovered-info.i1 : uncovered, !placed && map.freeBlock(x,y) ? skipped+1 : skipped);
-        if(placed)
-            removeHorizontal(map,info.i1,x,y);
 
-        //place V I1
-        placed = tryPlaceVertical(map,info.i1, x,y);
-      //  while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-      //      next = map.nextCoordinates(next.first, next.second);
-        solveInternal(map, next.first, next.second, placed ? i1_cnt + 1 : i1_cnt, i2_cnt, placed ? uncovered-info.i1 : uncovered, !placed && map.freeBlock(x,y) ? skipped+1 : skipped);
-        if(placed)
-            removeVertical(map,info.i1,x,y);
-
-        //place H I2
-        placed = tryPlaceHorizontal(map,info.i2, x,y);
-        if(next.first != 0 && placed){ //TODO check it later
-            next.first = jumpToNextAvailableXAfterTile(next.first, info.i2);
-        }
-       // while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-     //       next = map.nextCoordinates(next.first, next.second);
-        solveInternal(map, next.first, next.second, i1_cnt, placed ? i2_cnt + 1 : i2_cnt, placed ? uncovered-info.i2 : uncovered, !placed && map.freeBlock(x,y) ? skipped+1 : skipped);
-        if(placed)
-            removeHorizontal(map,info.i2,x,y);
-
-        //place V I2
-        placed = tryPlaceVertical(map,info.i2, x,y);
-       // while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-         //   next = map.nextCoordinates(next.first, next.second);
-        solveInternal(map, next.first, next.second, i1_cnt, placed ? i2_cnt + 1 : i2_cnt, placed ? uncovered-info.i2 : uncovered, !placed && map.freeBlock(x,y) ? skipped+1 : skipped);
-        if(placed)
-            removeVertical(map,info.i2,x,y);
-
-        //SKIP
-       // while(!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-         //   next = map.nextCoordinates(next.first, next.second);
-        solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, map.freeBlock(x,y) ? skipped + 1 : skipped);
     }
 
     bool tryPlaceHorizontal(ArrayMap &map, int tile, const int &x, const int &y) {
@@ -391,7 +384,7 @@ private:
 //            map.setValue(x, i, id);
 //    }
 
-    void removeHorizontal(ArrayMap & map, int tile, const int & x, const int & y){
+    void removeHorizontal(ArrayMap &map, int tile, const int &x, const int &y) {
         tile--;
         for (int i = x; i <= x + tile; i++)
             map.setValue(i, y, MapInfo::FREE);
@@ -405,10 +398,9 @@ private:
         nextId--;
     }
 
-    void printMap(const ArrayMap &matrix, const int &cx, const int &cy, const int &price, const int &uncovered,
-                  const int &skipped) const {
+    void printMap(const ArrayMap &matrix, const int &cx, const int &cy, const int &price, const int &uncovered) const {
         cout << "X: " << cx << " Y: " << cy << " P: " << price << " B: " << best->price <<
-             " U: " << uncovered << " S: " << skipped << endl;
+             " U: " << uncovered << endl;
         cout << matrix << endl;
     }
 };
