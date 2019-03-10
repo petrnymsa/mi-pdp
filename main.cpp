@@ -17,16 +17,10 @@ public:
 
     }
 
-    ArrayMap(const ArrayMap &copy, int fromX, int toX, int fromY, int toY, int id) {
+    ArrayMap(const ArrayMap &copy) {
         this->rows = copy.rows;
         this->columns = copy.columns;
         this->matrix = copy.matrix;
-
-        for (int x = fromX; x <= toX; x++) {
-            for (int y = fromY; y <= toY; y++) {
-                setValue(x, y, id);
-            }
-        }
     }
 
     bool freeBlock(const int &x, const int &y) const {
@@ -34,14 +28,14 @@ public:
     }
 
     int getValue(const int &x, const int &y) const {
-        assert(x < columns);
-        assert(y < rows);
+       // assert(x < columns);
+     //   assert(y < rows);
         return matrix[x + y * columns];
     }
 
     void setValue(const int &x, const int &y, const int value) {
-        assert(x < columns);
-        assert(y < rows);
+     //   assert(x < columns);
+     //   assert(y < rows);
         matrix[x + y * columns] = value;
     }
 
@@ -211,7 +205,7 @@ public:
     SolverResult &solve() {
         best = new SolverResult(info.map);
         pair<int, int> start = info.findStart();
-        solveInternal(info.map, start.first, start.second, 0, 0, info.startUncovered, 0, 1, TILE_NULL, true);
+        solveInternal(&info.map, start.first, start.second, 0, 0, info.startUncovered, 0, 1, TILE_NULL, true);
 
         //TODO tohle asi nechci
         for (int x = 0; x < best->map.columns; x++) {
@@ -233,45 +227,65 @@ private:
     SolverResult *best;
     const int TILE_NULL = 0;
 
-    void solveInternal(ArrayMap map, int x, int y, int i1_cnt, int i2_cnt, int uncovered, int skipped, int nextTileId,
-                       int tileSize, bool horizontal) {
+    int jumpToNextAvailableXAfterTile(const int & x, const int & tile){
+        if(x + tile + 1 < info.columns)
+            return x+ tile + 1;
+        else x  + 1;
+    }
 
-        pair<int, int> prev = map.prevCoordinates(x, y);
+    void solveInternal(ArrayMap * map, const int & x, const int & y, int i1_cnt, int i2_cnt, int uncovered, int skipped, int nextTileId,
+                       const int & tileSize, const bool & horizontal) {
+
+        ArrayMap * copy = nullptr;
+        bool placed = false;
+        pair<int, int> prev = map->prevCoordinates(x, y);
         if (tileSize != TILE_NULL) {  // place new
-            bool placed = false;
             if (horizontal)
-                placed = tryPlaceHorizontal(map, tileSize, prev.first, prev.second, nextTileId);
-            else placed = tryPlaceVertical(map, tileSize, prev.first, prev.second, nextTileId);
+                placed = tryPlaceHorizontal(*map, tileSize, prev.first, prev.second);
+            else placed = tryPlaceVertical(*map, tileSize, prev.first, prev.second);
 
             if (placed) {
+                copy = new ArrayMap(*map);
+                map = copy;
+                if(horizontal)
+                    placeHorizontal(*map, tileSize, prev.first, prev.second, nextTileId);
+                else placeVertical(*map, tileSize, prev.first, prev.second, nextTileId);
+
                 if (tileSize == info.i1) i1_cnt++;
                 else i2_cnt++;
 
                 uncovered -= tileSize;
                 nextTileId++;
-            } else if (map.freeBlock(prev.first, prev.second))
+            } else if (map->freeBlock(prev.first, prev.second))
                 skipped++;
-        } else if (x != 0 && map.freeBlock(prev.first, prev.second)) {
+        } else if (x != 0 && map->freeBlock(prev.first, prev.second)) {
             skipped++;
         }
 
         int upperPrice = info.computeUpperPrice(uncovered - skipped);
         int currentPrice = info.computePrice(i1_cnt, i2_cnt, uncovered);
-       // printMap(map, x, y, currentPrice, uncovered, skipped, tileSize, horizontal);
+
+        printMap(*map,x,y,currentPrice, uncovered,skipped,tileSize,horizontal);
+
         if(currentPrice - info.cn*uncovered + info.cn*skipped + upperPrice <= best->price) {
-           // cout << "CUT" << endl << endl;
+            delete copy;
             return;
         }
 
-        if (map.isOnRightBottomCorner(x, y)) {
+        if (map->isOnRightBottomCorner(x, y)) {
             if (currentPrice > best->price) {
-                best->map = map;
+                best->map = *map;
                 best->price = currentPrice;
             }
+
+            delete copy;
             return;
         }
 
-        pair<int, int> next = map.nextCoordinates(x, y);
+        pair<int, int> next = map->nextCoordinates(x, y);
+        if(next.first != 0 && placed && horizontal){
+
+        }
         //place H I1
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, skipped, nextTileId, info.i1, true);
         //place V I1
@@ -284,13 +298,11 @@ private:
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, skipped, nextTileId, TILE_NULL, false);
 
         //TODO kontrola nejlepsi ceny taky tady?
-//        if (currentPrice > best->price) {
-////            best->map = map;
-////            best->price = currentPrice;
-////        }
+
+        delete copy;
     }
 
-    bool tryPlaceHorizontal(ArrayMap &map, int tile, const int &x, const int &y, const int &id) {
+    bool tryPlaceHorizontal(ArrayMap &map, int tile, const int &x, const int &y) {
         tile--;
         if (x + tile >= map.columns)
             return false;
@@ -300,12 +312,10 @@ private:
                 return false;
         }
 
-        placeHorizontal(map, tile, x, y, id);
-
         return true;
     }
 
-    bool tryPlaceVertical(ArrayMap &map, int tile, const int &x, const int &y, const int &id) {
+    bool tryPlaceVertical(ArrayMap &map, int tile, const int &x, const int &y) {
         tile--;
         if (y + tile >= map.rows)
             return false;
@@ -315,17 +325,17 @@ private:
                 return false;
         }
 
-        placeVertical(map, tile, x, y, id);
-
         return true;
     }
 
     void placeHorizontal(ArrayMap &map, int tile, const int &x, const int &y, const int &id) {
+        tile--;
         for (int i = x; i <= x + tile; i++)
             map.setValue(i, y, id);
     }
 
     void placeVertical(ArrayMap &map, int tile, const int &x, const int &y, const int &id) {
+        tile--;
         for (int i = y; i <= y + tile; i++)
             map.setValue(x, i, id);
     }
