@@ -227,11 +227,11 @@ private:
     SolverResult *best;
     const int TILE_NULL = 0;
 
-    int jumpToNextAvailableXAfterTile(const int & x, const int & tile){
-        if(x + tile + 1 < info.columns)
-            return x+ tile + 1;
-        else x  + 1;
-    }
+//    int jumpToNextAvailableXAfterTile(const int & x, const int & tile){
+//        if(x + tile < info.columns)
+//            return x+ tile;
+//        else x  + 1;
+//    }
 
     void solveInternal(ArrayMap * map, const int & x, const int & y, int i1_cnt, int i2_cnt, int uncovered, int skipped, int nextTileId,
                        const int & tileSize, const bool & horizontal) {
@@ -239,6 +239,7 @@ private:
         ArrayMap * copy = nullptr;
         bool placed = false;
         pair<int, int> prev = map->prevCoordinates(x, y);
+
         if (tileSize != TILE_NULL) {  // place new
             if (horizontal)
                 placed = tryPlaceHorizontal(*map, tileSize, prev.first, prev.second);
@@ -265,7 +266,7 @@ private:
         int upperPrice = info.computeUpperPrice(uncovered - skipped);
         int currentPrice = info.computePrice(i1_cnt, i2_cnt, uncovered);
 
-        printMap(*map,x,y,currentPrice, uncovered,skipped,tileSize,horizontal);
+       // printMap(*map,x,y,currentPrice, uncovered,skipped,tileSize,horizontal);
 
         if(currentPrice - info.cn*uncovered + info.cn*skipped + upperPrice <= best->price) {
             delete copy;
@@ -283,9 +284,9 @@ private:
         }
 
         pair<int, int> next = map->nextCoordinates(x, y);
-        if(next.first != 0 && placed && horizontal){
-
-        }
+//        if(next.first != 0 && placed && horizontal){ //TODO check it later
+//            next.first = next.first + tileSize < info.columns ? next.first + tileSize : next.first;
+//        }
         //place H I1
         solveInternal(map, next.first, next.second, i1_cnt, i2_cnt, uncovered, skipped, nextTileId, info.i1, true);
         //place V I1
