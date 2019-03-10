@@ -72,6 +72,15 @@ public:
         return make_pair(-1, -1);
     }
 
+    pair<int,int> nextFree(const int & x, const int & y) const {
+        pair<int,int> next = nextCoordinates(x,y);
+
+       while(!freeBlock(next.first,next.second) && !isOnRightBottomCorner(next.first,next.second)){
+           next = nextCoordinates(next.first,next.second);
+       }
+       return next;
+    }
+
 //    pair<int, int> prevCoordinates(const int &x, const int &y) const {
 //        if (x - 1 >= 0)
 //            return make_pair(x - 1, y);
@@ -79,7 +88,7 @@ public:
 //            return make_pair(columns - 1, y - 1);
 //    }
 
-    bool isOnRightBottomCorner(const int &x, const int &y) {
+    bool isOnRightBottomCorner(const int &x, const int &y) const {
         return x == columns - 1 && y == rows - 1;
     }
 
@@ -257,19 +266,20 @@ private:
 
     void solveInternal(ArrayMap &map, const int &x, const int &y, int price, int uncovered) {
 
-        if (best->price == info.optimPrice)
-            return;
-
         int upperPrice = info.computeUpperPrice(uncovered);
 
         //  printMap(map, x, y, price, uncovered);
 
-        if (price + upperPrice < best->price) {
+        if (price + upperPrice <= best->price) {
             return;
         }
 
-        if (price > best->price) {
-            //  printMap(map, x, y, price, uncovered);
+        if (best->price == info.optimPrice)
+            return;
+
+
+        if (price + info.cn * uncovered > best->price) {
+          //  printMap(map, x, y, price, uncovered);
             best->map = map;
             best->price = price + info.cn * uncovered;
         }
@@ -279,32 +289,36 @@ private:
         }
 
 //        //find next free X space
-        pair<int, int> next = map.nextCoordinates(x, y);
+        pair<int, int> next = map.nextFree(x,y);
         // look for the next really free tile or until you are on the right corner
-        while (!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-            next = map.nextCoordinates(next.first, next.second);
+//        while (!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
+//            next = map.nextCoordinates(next.first, next.second);
 
         if (map.freeBlock(x, y)) {
             //place H I2
             if (tryPlaceHorizontal(map, info.i2, x, y)) {
+                next = map.nextFree(x,y);
                 solveInternal(map, next.first, next.second, price + info.c2, uncovered - info.i2);
                 removeHorizontal(map, info.i2, x, y);
             }
 
-            //place H I1
-            if (tryPlaceHorizontal(map, info.i1, x, y)) {
-                solveInternal(map, next.first, next.second, price + info.c1, uncovered - info.i1);
-                removeHorizontal(map, info.i1, x, y);
-            }
-
             //place V I2
             if (tryPlaceVertical(map, info.i2, x, y)) {
+                next = map.nextFree(x,y);
                 solveInternal(map, next.first, next.second, price + info.c2, uncovered - info.i2);
                 removeVertical(map, info.i2, x, y);
             }
 
+            //place H I1
+            if (tryPlaceHorizontal(map, info.i1, x, y)) {
+                next = map.nextFree(x,y);
+                solveInternal(map, next.first, next.second, price + info.c1, uncovered - info.i1);
+                removeHorizontal(map, info.i1, x, y);
+            }
+
             //place V I1
             if (tryPlaceVertical(map, info.i1, x, y)) {
+                next = map.nextFree(x,y);
                 solveInternal(map, next.first, next.second, price + info.c1,uncovered - info.i1);
                 removeVertical(map, info.i1, x, y);
             }
