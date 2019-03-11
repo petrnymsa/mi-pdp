@@ -15,7 +15,9 @@ public:
 
     ArrayMap(const int rows, const int columns)
             : rows(rows), columns(columns), n(rows * columns) {
-        matrix = new int[n];
+        this->matrix = new int[n];
+        for(int i = 0; i < n; i++)
+            matrix[i] = 0;
     }
 
     void writeCopy(const ArrayMap &copy) {
@@ -81,13 +83,6 @@ public:
        return next;
     }
 
-//    pair<int, int> prevCoordinates(const int &x, const int &y) const {
-//        if (x - 1 >= 0)
-//            return make_pair(x - 1, y);
-//        else
-//            return make_pair(columns - 1, y - 1);
-//    }
-
     bool isOnRightBottomCorner(const int &x, const int &y) const {
         return x == columns - 1 && y == rows - 1;
     }
@@ -116,7 +111,6 @@ public:
 
     const static int FREE = 0;
     const static int BLOCK = -1;
-//    const static int START = -2;
 
     MapInfo(int rows, int columns, int i1, int i2, int c1, int c2, int cn)
             : rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), map(rows, columns) {
@@ -133,10 +127,6 @@ public:
 
         return pair<int, int>(-1, -1);
     }
-
-//    int computePrice(int i1_cnt, int i2_cnt, int not_covered) {
-//        return c1 * i1_cnt + c2 * i2_cnt + cn * not_covered;
-//    }
 
     int computeUpperPrice(int number) {
         // vraci maximalni cenu pro "number" nevyresenych policek
@@ -186,10 +176,9 @@ public:
     set<pair<int, int>> empty;
     int price;
     ArrayMap map;
-    int emptyCount;
 
     SolverResult(ArrayMap &map)
-            : price(INT32_MIN), map(map), emptyCount(0) {
+            : price(INT32_MIN), map(map) {
     }
 
     friend ostream &operator<<(ostream &out, const SolverResult &result);
@@ -231,15 +220,13 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
 class Solver {
 public:
     Solver(MapInfo &mapInfo)
-            : info(mapInfo) {
+            : info(mapInfo), best(nullptr) {
     }
 
     SolverResult &solve() {
         best = new SolverResult(info.map);
 
         pair<int, int> start = info.findStart();
-        //    printMap(info.map, 0,0,0,0,0);
-        cout << "Max optim price: " << info.optimPrice << endl;
         solveInternal(info.map, start.first, start.second, 0, info.startUncovered);
 
         //TODO tohle asi nechci
@@ -255,11 +242,12 @@ public:
     }
 
     ~Solver() {
+        if(best != nullptr)
         delete best;
     }
 
 private:
-    MapInfo info;
+    MapInfo & info;
     SolverResult *best;
     const int TILE_NULL = 0;
     int nextId = 0;
@@ -267,16 +255,12 @@ private:
     void solveInternal(ArrayMap &map, const int &x, const int &y, int price, int uncovered) {
 
         int upperPrice = info.computeUpperPrice(uncovered);
-
         //  printMap(map, x, y, price, uncovered);
-
-        if (price + upperPrice <= best->price) {
+        if (price + upperPrice <= best->price)
             return;
-        }
 
         if (best->price == info.optimPrice)
             return;
-
 
         if (price + info.cn * uncovered > best->price) {
           //  printMap(map, x, y, price, uncovered);
@@ -284,15 +268,11 @@ private:
             best->price = price + info.cn * uncovered;
         }
 
-        if (map.isOnRightBottomCorner(x, y)) {
+        if (map.isOnRightBottomCorner(x, y))
             return;
-        }
 
 //        //find next free X space
         pair<int, int> next = map.nextFree(x,y);
-        // look for the next really free tile or until you are on the right corner
-//        while (!map.freeBlock(next.first, next.second) && !map.isOnRightBottomCorner(next.first, next.second))
-//            next = map.nextCoordinates(next.first, next.second);
 
         if (map.freeBlock(x, y)) {
             //place H I2
@@ -399,11 +379,7 @@ int main(int argc, char **argv) {
     } else {
         mapInfo = MapInfo::load(cin);
     }
-
-    //cout << info->map << endl;
-
     Solver solver(*mapInfo);
-
     SolverResult &result = solver.solve();
     cout << result;
     delete mapInfo;
