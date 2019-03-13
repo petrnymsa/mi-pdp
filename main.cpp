@@ -14,11 +14,12 @@ using namespace std;
 class ArrayMap {
 public:
     int rows, columns;
-    int n;
     int nextId;
+    int x, y;
 
     ArrayMap(const int rows, const int columns)
-            : rows(rows), columns(columns), n(rows * columns), nextId(1) {
+            : rows(rows), columns(columns), nextId(1), x(0), y(0) {
+        int n = rows * columns;
         this->matrix = new int[n];
         for (int i = 0; i < n; i++)
             matrix[i] = BLOCK_FREE;
@@ -27,8 +28,11 @@ public:
     void writeCopy(const ArrayMap &copy) {
         this->rows = copy.rows;
         this->columns = copy.columns;
-        this->n = copy.n;
         this->nextId = copy.nextId;
+        this->x = copy.x;
+        this->y = copy.y;
+
+        int n = rows * columns;
         this->matrix = new int[n];
         for (int i = 0; i < n; i++)
             this->matrix[i] = copy.matrix[i];
@@ -50,8 +54,8 @@ public:
         delete[] matrix;
     }
 
-    bool freeBlock(const int &x, const int &y) const {
-        return getValue(x, y) == 0;
+    bool freeBlock() const {
+        return getValue(x, y) == BLOCK_FREE;
     }
 
     int getValue(const int &x, const int &y) const {
@@ -68,31 +72,36 @@ public:
         // matrix[x][y] = value;
     }
 
-    pair<int, int> nextFree(const int &x, const int &y) const {
+    void nextFree() {
         pair<int, int> next = nextCoordinates(x, y);
 
         while (!freeBlock(next.first, next.second) && !isOnRightBottomCorner(next.first, next.second)) {
             next = nextCoordinates(next.first, next.second);
         }
-        return next;
+        this->x = next.first;
+        this->y = next.second;
     }
 
-    bool isOnRightBottomCorner(const int &x, const int &y) const {
-        return x == columns - 1 && y == rows - 1;
+    bool isOnRightBottomCorner() const {
+        return isOnRightBottomCorner(x, y);
     }
 
-    pair<int, int> findStart() {
-        for (int y = 0; y < rows; y++) {
-            for (int x = 0; x < columns; x++) {
-                if (getValue(x, y) == BLOCK_FREE)
-                    return pair<int, int>(x, y);
+    void setStart() {
+        for (int iy = 0; iy < rows; iy++) {
+            for (int ix = 0; ix < columns; ix++) {
+                if (getValue(ix, iy) == BLOCK_FREE) {
+                    x = ix;
+                    y = iy;
+                    return;
+                }
             }
         }
+        x = columns - 1;
+        y = rows - 1;
 
-        return pair<int, int>(-1, -1);
     }
 
-    bool canPlaceHorizontal(int tile, const int &x, const int &y) {
+    bool canPlaceHorizontal(int tile) {
         tile--;
         if (x + tile >= columns)
             return false;
@@ -104,7 +113,7 @@ public:
         return true;
     }
 
-    bool canPlaceVertical(int tile, const int &x, const int &y) {
+    bool canPlaceVertical(int tile) {
         tile--;
         if (y + tile >= rows)
             return false;
@@ -116,44 +125,24 @@ public:
         return true;
     }
 
-    ArrayMap placeHorizontal(int tile, const int &x, const int &y) {
+    ArrayMap placeHorizontal(int tile) {
         ArrayMap map = *this;
         tile--;
         for (int i = x; i <= x + tile; i++)
             map.setValue(i, y, nextId);
         map.nextId++;
+        map.nextFree();
         return map;
     }
 
-    ArrayMap placeVertical(int tile, const int &x, const int &y) {
+    ArrayMap placeVertical(int tile) {
         ArrayMap map = *this;
         tile--;
         for (int i = y; i <= y + tile; i++)
             map.setValue(x, i, nextId);
         map.nextId++;
-
+        map.nextFree();
         return map;
-    }
-
-    bool tryPlaceHorizontal(int tile, const int &x, const int &y){
-        if(!canPlaceHorizontal(tile, x,y))
-            return false;
-        tile--;
-        for (int i = x; i <= x + tile; i++)
-            setValue(i, y, nextId);
-        nextId++;
-        return true;
-    }
-
-    bool tryPlaceVertical(int tile, const int &x, const int &y){
-        if(!canPlaceVertical(tile, x,y))
-            return false;
-
-        tile--;
-        for (int i = y; i <= y + tile; i++)
-            setValue(x, i, nextId);
-        nextId++;
-        return true;
     }
 
     friend ostream &operator<<(ostream &os, const ArrayMap &map);
@@ -169,6 +158,14 @@ private:
             return make_pair(0, y + 1);
 
         return make_pair(-1, -1);
+    }
+
+    bool isOnRightBottomCorner(const int &x, const int &y) const {
+        return x == columns - 1 && y == rows - 1;
+    }
+
+    bool freeBlock(const int &x, const int &y) const {
+        return getValue(x, y) == BLOCK_FREE;
     }
 };
 
@@ -186,11 +183,6 @@ public:
     int startUncovered;
     int optimPrice;
     set<pair<int, int>> banned;
-
-    //ArrayMap map;
-
-    //  const static int FREE = 0;
-    // const static int BLOCK = -1;
 
     MapInfo(int rows, int columns, int i1, int i2, int c1, int c2, int cn, int k)
             : rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), k(k),
@@ -286,8 +278,9 @@ public:
 
         best = new SolverResult(map);
 
-        pair<int, int> start = map.findStart();
-        solveInternal(map, start.first, start.second, 0, info.startUncovered);
+        //  pair<int, int> start = map.findStart();
+        map.setStart();
+        solve(map, 0, info.startUncovered);
 
         //Find left empty tiles
         for (int x = 0; x < best->map.columns; x++) {
@@ -302,17 +295,14 @@ public:
     }
 
     ~Solver() {
-        if (best != nullptr)
-            delete best;
+        delete best;
     }
 
 private:
     const MapInfo &info;
     SolverResult *best;
-   // const int TILE_NULL = 0;
-   // int nextId = 0;
 
-    void solveInternal(ArrayMap & map, const int &x, const int &y, int price, int uncovered) {
+    void solve(ArrayMap &map, int price, int uncovered) {
 
         int upperPrice = info.computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
@@ -323,56 +313,45 @@ private:
             return;
 
         if (price + info.cn * uncovered > best->price) {
-            //  printMap(map, x, y, price, uncovered);
             best->map = map;
             best->price = price + info.cn * uncovered;
         }
 
-        if (map.isOnRightBottomCorner(x, y))
+        if (map.isOnRightBottomCorner())
             return;
 
-//        //find next free X space
-        pair<int, int> next = map.nextFree(x, y);
-
-        if (map.freeBlock(x, y)) {
+        if (map.freeBlock()) {
             //place H I2
-            if (map.canPlaceHorizontal(info.i2, x, y)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info.i2, x,y);
-                next = modifiedMap.nextFree(x, y);
-                solveInternal(modifiedMap, next.first, next.second, price + info.c2, uncovered - info.i2);
-               // removeHorizontal(map, info.i2, x, y);
+            if (map.canPlaceHorizontal(info.i2)) {
+                ArrayMap modifiedMap = map.placeHorizontal(info.i2);
+                solve(modifiedMap, price + info.c2, uncovered - info.i2);
             }
 
             //place V I2
-            if (map.canPlaceVertical(info.i2, x, y)) {
-                ArrayMap modifiedMap = map.placeVertical(info.i2, x,y);
-                next = modifiedMap.nextFree(x, y);
-                solveInternal(modifiedMap, next.first, next.second, price + info.c2, uncovered - info.i2);
-              //  removeVertical(map, info.i2, x, y);
+            if (map.canPlaceVertical(info.i2)) {
+                ArrayMap modifiedMap = map.placeVertical(info.i2);
+                solve(modifiedMap, price + info.c2, uncovered - info.i2);
             }
 
             //place H I1
-            if (map.canPlaceHorizontal(info.i1, x, y)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info.i1, x,y);
-                next = modifiedMap.nextFree(x, y);
-                solveInternal(modifiedMap, next.first, next.second, price + info.c1, uncovered - info.i1);
-               // removeHorizontal(map, info.i1, x, y);
+            if (map.canPlaceHorizontal(info.i1)) {
+                ArrayMap modifiedMap = map.placeHorizontal(info.i1);
+                solve(modifiedMap, price + info.c1, uncovered - info.i1);
             }
 
             //place V I1
-            if (map.canPlaceVertical(info.i1, x, y)) {
-                ArrayMap modifiedMap = map.placeVertical(info.i1, x,y);
-                next = modifiedMap.nextFree(x, y);
-                solveInternal(modifiedMap, next.first, next.second, price + info.c1, uncovered - info.i1);
-              //  removeVertical(map, info.i1, x, y);
+            if (map.canPlaceVertical(info.i1)) {
+                ArrayMap modifiedMap = map.placeVertical(info.i1);
+                solve(modifiedMap, price + info.c1, uncovered - info.i1);
             }
             //SKIP on purpose
-            solveInternal(map, next.first, next.second, price + info.cn, uncovered - 1);
+            map.nextFree();
+            solve(map, price + info.cn, uncovered - 1);
 
         } else { // standing on forbiden or placed tile
-            solveInternal(map, next.first, next.second, price, uncovered);
+            map.nextFree();
+            solve(map, price, uncovered);
         }
-
     }
 
     void printMap(const ArrayMap &matrix, const int &cx, const int &cy, const int &price, const int &uncovered) const {
