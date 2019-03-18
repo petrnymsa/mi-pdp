@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <cassert>
+#include <omp.h>
 
 using namespace std;
 
@@ -275,13 +276,15 @@ public:
         for (auto &ban : info.banned) {
             map.setValue(ban.first, ban.second, BLOCK_BAN);
         }
+        map.setStart();
 
         best = new SolverResult(map);
-
-        //  pair<int, int> start = map.findStart();
-        map.setStart();
-        solve(map, 0, info.startUncovered);
-
+        int threads = 4;
+#pragma omp parallel shared(best) shared(info) num_threads(threads/2)
+        {
+#pragma omp single
+            solve(map, 0, info.startUncovered);
+        }
         //Find left empty tiles
         for (int x = 0; x < best->map.columns; x++) {
             for (int y = 0; y < best->map.rows; y++) {
@@ -303,54 +306,77 @@ private:
     SolverResult *best;
 
     void solve(ArrayMap &map, int price, int uncovered) {
-
+        bool canContinue = true;
         int upperPrice = info.computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
-        if (price + upperPrice <= best->price)
-            return;
-
-        if (best->price == info.optimPrice)
-            return;
-
-        if (price + info.cn * uncovered > best->price) {
-            best->map = map;
-            best->price = price + info.cn * uncovered;
+        if (price + upperPrice <= best->price) {
+            #pragma omp critical
+            {
+                if (price + upperPrice <= best->price)
+                    canContinue=false;
+            }
         }
+
+        if (best->price == info.optimPrice) {
+            #pragma omp critical
+            {
+                if (best->price == info.optimPrice)
+                    canContinue=false;
+            }
+        }
+
+       if (canContinue && price + info.cn * uncovered > best->price) {
+            #pragma omp critical
+            {
+                if (price + info.cn * uncovered > best->price) {
+                    best->map = map;
+                    best->price = price + info.cn * uncovered;
+                }
+            }
+       }
 
         if (map.isOnRightBottomCorner())
             return;
 
-        if (map.freeBlock()) {
+        if (canContinue && map.freeBlock()) {
             //place H I2
             if (map.canPlaceHorizontal(info.i2)) {
                 ArrayMap modifiedMap = map.placeHorizontal(info.i2);
+                #pragma omp task if(uncovered > info.startUncovered /2)
                 solve(modifiedMap, price + info.c2, uncovered - info.i2);
             }
 
             //place V I2
             if (map.canPlaceVertical(info.i2)) {
                 ArrayMap modifiedMap = map.placeVertical(info.i2);
+                #pragma omp task if(uncovered > info.startUncovered /2 )
                 solve(modifiedMap, price + info.c2, uncovered - info.i2);
             }
 
             //place H I1
             if (map.canPlaceHorizontal(info.i1)) {
                 ArrayMap modifiedMap = map.placeHorizontal(info.i1);
+                #pragma omp task if(uncovered > info.startUncovered /2)
                 solve(modifiedMap, price + info.c1, uncovered - info.i1);
             }
 
             //place V I1
             if (map.canPlaceVertical(info.i1)) {
                 ArrayMap modifiedMap = map.placeVertical(info.i1);
+                #pragma omp task if(uncovered > info.startUncovered / 2)
                 solve(modifiedMap, price + info.c1, uncovered - info.i1);
             }
             //SKIP on purpose
-            map.nextFree();
-            solve(map, price + info.cn, uncovered - 1);
-
-        } else { // standing on forbiden or placed tile
-            map.nextFree();
-            solve(map, price, uncovered);
+          //  map.nextFree();
+            ArrayMap modifiedMap = map;
+            modifiedMap.nextFree();
+     //  map.nextFree();
+            solve(modifiedMap, price + info.cn, uncovered - 1);
+        } else if(canContinue) { // standing on forbiden or placed tile
+            ArrayMap modifiedMap = map;
+            modifiedMap.nextFree();
+//           map.nextFree();
+            solve(modifiedMap, price, uncovered);
         }
     }
 
