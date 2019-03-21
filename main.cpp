@@ -1,3 +1,5 @@
+#include <utility>
+
 #include <iostream>
 #include <vector>
 #include <set>
@@ -11,6 +13,52 @@ using namespace std;
 #define BLOCK_FREE 0
 #define BLOCK_BAN -1
 
+// ------------------------------------------------------------------------------------------------------------------
+class MapInfo {
+public:
+    int rows;
+    int columns;
+    int i1;
+    int i2;
+    int c1;
+    int c2;
+    int cn;
+    int k;
+    int startUncovered;
+    int optimPrice;
+    set<pair<int, int>> banned;
+
+    MapInfo(int rows, int columns, int i1, int i2, int c1, int c2, int cn, int k)
+            : rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), k(k),
+              startUncovered(rows * columns - k)/* map(rows, columns)*/ {
+        optimPrice = computeUpperPrice(startUncovered);
+    }
+
+    void addBanned(const int &x, const int &y) {
+        banned.insert(make_pair(x, y));
+    }
+
+    int computeUpperPrice(int number) const {
+        // vraci maximalni cenu pro "number" nevyresenych policek
+        // returns the maximal price for the "number" of unsolved squares
+        int i, x;
+        int max = c2 * (number / i2);
+        int zb = number % i2;
+        max += c1 * (zb / i1);
+        zb = zb % i1;
+        max += zb * cn;
+        for (i = 0; i < (number / i2); i++) {
+            x = c2 * i;
+            zb = number - i * i2;
+            x += c1 * (zb / i1);
+            zb = zb % i1;
+            x += zb * cn;
+            if (x > max) max = x;
+        }
+        return max;
+    }
+
+};
 // ------------------------------------------------------------------------------------------------------------------
 class ArrayMap {
 public:
@@ -43,11 +91,39 @@ public:
         writeCopy(copy);
     }
 
+    //move constructor
+    ArrayMap(ArrayMap && copy)
+    :rows(copy.rows), columns(copy.columns), nextId(copy.nextId), x(copy.x), y(copy.y), matrix(copy.matrix){
+
+        copy.matrix = nullptr;
+        cout << "MOVE constructor" << endl;
+    }
+
     ArrayMap &operator=(const ArrayMap &copy) {
         if (this == &copy)
             return *this;
         delete[] matrix;
+
         writeCopy(copy);
+        return *this;
+    }
+
+    //move operator
+    ArrayMap &operator=(ArrayMap &&copy) {
+        if (this == &copy)
+            return *this;
+        delete[] matrix;
+
+        cout << "MOVE =" << endl;
+
+        this->rows = copy.rows;
+        this->columns = copy.columns;
+        this->nextId = copy.nextId;
+        this->x = copy.x;
+        this->y = copy.y;
+        this->matrix = copy.matrix;
+
+        copy.matrix = nullptr;
         return *this;
     }
 
@@ -170,52 +246,6 @@ private:
     }
 };
 
-// ------------------------------------------------------------------------------------------------------------------
-class MapInfo {
-public:
-    int rows;
-    int columns;
-    int i1;
-    int i2;
-    int c1;
-    int c2;
-    int cn;
-    int k;
-    int startUncovered;
-    int optimPrice;
-    set<pair<int, int>> banned;
-
-    MapInfo(int rows, int columns, int i1, int i2, int c1, int c2, int cn, int k)
-            : rows(rows), columns(columns), i1(i1), i2(i2), c1(c1), c2(c2), cn(cn), k(k),
-              startUncovered(rows * columns - k)/* map(rows, columns)*/ {
-        optimPrice = computeUpperPrice(startUncovered);
-    }
-
-    void addBanned(const int &x, const int &y) {
-        banned.insert(make_pair(x, y));
-    }
-
-    int computeUpperPrice(int number) const {
-        // vraci maximalni cenu pro "number" nevyresenych policek
-        // returns the maximal price for the "number" of unsolved squares
-        int i, x;
-        int max = c2 * (number / i2);
-        int zb = number % i2;
-        max += c1 * (zb / i1);
-        zb = zb % i1;
-        max += zb * cn;
-        for (i = 0; i < (number / i2); i++) {
-            x = c2 * i;
-            zb = number - i * i2;
-            x += c1 * (zb / i1);
-            zb = zb % i1;
-            x += zb * cn;
-            if (x > max) max = x;
-        }
-        return max;
-    }
-
-};
 
 // ------------------------------------------------------------------------------------------------------------------
 class SolverResult {
@@ -224,8 +254,8 @@ public:
     int price;
     ArrayMap map;
 
-    SolverResult(const ArrayMap &map)
-            : price(INT32_MIN), map(map) {
+    SolverResult(ArrayMap map)
+            : price(INT32_MIN), map(std::move(map)) {
     }
 
     friend ostream &operator<<(ostream &out, const SolverResult &result);
@@ -266,24 +296,24 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
 // ------------------------------------------------------------------------------------------------------------------
 class Solver {
 public:
-    Solver(const MapInfo &mapInfo)
+    Solver(MapInfo * mapInfo)
             : info(mapInfo), best(nullptr) {
     }
 
     SolverResult &solve() {
 
-        ArrayMap map(info.rows, info.columns);
-        for (auto &ban : info.banned) {
+        ArrayMap map(info->rows, info->columns);
+        for (auto &ban : info->banned) {
             map.setValue(ban.first, ban.second, BLOCK_BAN);
         }
         map.setStart();
 
         best = new SolverResult(map);
-        int threads = 4;
-#pragma omp parallel shared(best) shared(info) num_threads(threads/2)
+      //  const int threads = omp_get_max_threads();
+        #pragma omp parallel shared(info) shared(best) num_threads(2)
         {
-#pragma omp single
-            solve(map, 0, info.startUncovered);
+            #pragma omp single
+            solve(&map, 0, info->startUncovered);
         }
         //Find left empty tiles
         for (int x = 0; x < best->map.columns; x++) {
@@ -294,6 +324,8 @@ public:
             }
         }
 
+     //   delete map;
+
         return *best;
     }
 
@@ -302,81 +334,66 @@ public:
     }
 
 private:
-    const MapInfo &info;
+    MapInfo * info;
     SolverResult *best;
+    static const int threshold = 2;
 
-    void solve(ArrayMap &map, int price, int uncovered) {
-        bool canContinue = true;
-        int upperPrice = info.computeUpperPrice(uncovered);
+    void solve(ArrayMap * map, int price, int uncovered) {
+    //    bool canContinue = true;
+        int upperPrice = info->computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
-        if (price + upperPrice <= best->price) {
-            #pragma omp critical
-            {
-                if (price + upperPrice <= best->price)
-                    canContinue=false;
-            }
-        }
-
-        if (best->price == info.optimPrice) {
-            #pragma omp critical
-            {
-                if (best->price == info.optimPrice)
-                    canContinue=false;
-            }
-        }
-
-       if (canContinue && price + info.cn * uncovered > best->price) {
-            #pragma omp critical
-            {
-                if (price + info.cn * uncovered > best->price) {
-                    best->map = map;
-                    best->price = price + info.cn * uncovered;
-                }
-            }
-       }
-
-        if (map.isOnRightBottomCorner())
+        if (price + upperPrice <= best->price)
+                  return;
+        if (best->price == info->optimPrice)
             return;
 
-        if (canContinue && map.freeBlock()) {
+        if (price + info->cn * uncovered > best->price) {
+            #pragma omp critical
+            {
+                if (price + info->cn * uncovered > best->price) {
+                    best->map = *map;
+                    best->price = price + info->cn * uncovered;
+                }
+            }
+        }
+
+        if (map->isOnRightBottomCorner())
+            return;
+
+        if (map->freeBlock()) {
             //place H I2
-            if (map.canPlaceHorizontal(info.i2)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info.i2);
-                #pragma omp task if(uncovered > info.startUncovered /2)
-                solve(modifiedMap, price + info.c2, uncovered - info.i2);
+            if (map->canPlaceHorizontal(info->i2)) {
+                ArrayMap modifiedMap = map->placeHorizontal(info->i2);
+                #pragma omp task if(uncovered > info->startUncovered /threshold) firstprivate(price) firstprivate(uncovered)
+                solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
-            if (map.canPlaceVertical(info.i2)) {
-                ArrayMap modifiedMap = map.placeVertical(info.i2);
-                #pragma omp task if(uncovered > info.startUncovered /2 )
-                solve(modifiedMap, price + info.c2, uncovered - info.i2);
+            if (map->canPlaceVertical(info->i2)) {
+                ArrayMap modifiedMap = map->placeVertical(info->i2);
+                #pragma omp task if(uncovered > info->startUncovered /threshold ) firstprivate(price) firstprivate(uncovered)
+                solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
-            if (map.canPlaceHorizontal(info.i1)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info.i1);
-                #pragma omp task if(uncovered > info.startUncovered /2)
-                solve(modifiedMap, price + info.c1, uncovered - info.i1);
+            if (map->canPlaceHorizontal(info->i1)) {
+                ArrayMap modifiedMap = map->placeHorizontal(info->i1);
+                #pragma omp task if(uncovered > info->startUncovered /threshold) firstprivate(price) firstprivate(uncovered)
+                solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
-            if (map.canPlaceVertical(info.i1)) {
-                ArrayMap modifiedMap = map.placeVertical(info.i1);
-                #pragma omp task if(uncovered > info.startUncovered / 2)
-                solve(modifiedMap, price + info.c1, uncovered - info.i1);
+            if (map->canPlaceVertical(info->i1)) {
+                ArrayMap modifiedMap = map->placeVertical(info->i1);
+                #pragma omp task if(uncovered > info->startUncovered / threshold) firstprivate(price) firstprivate(uncovered)
+                solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
-          //  map.nextFree();
-            ArrayMap modifiedMap = map;
-            modifiedMap.nextFree();
-     //  map.nextFree();
-            solve(modifiedMap, price + info.cn, uncovered - 1);
-        } else if(canContinue) { // standing on forbiden or placed tile
-            ArrayMap modifiedMap = map;
-            modifiedMap.nextFree();
-//           map.nextFree();
-            solve(modifiedMap, price, uncovered);
+            map->nextFree();
+            solve(map, price + info->cn, uncovered - 1);
+        } else { // standing on forbiden or placed tile
+            map->nextFree();
+            solve(map, price, uncovered);
         }
     }
 
@@ -417,10 +434,11 @@ int main(int argc, char **argv) {
             cout << "Problem with opening file. Exit." << endl;
             return -1;
         }
+        ifile.close();
     } else {
         mapInfo = load(cin);
     }
-    Solver solver(*mapInfo);
+    Solver solver(mapInfo);
     SolverResult &result = solver.solve();
     cout << result;
     delete mapInfo;
