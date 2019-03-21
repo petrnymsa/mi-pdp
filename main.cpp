@@ -310,7 +310,7 @@ public:
 
         best = new SolverResult(map);
       //  const int threads = omp_get_max_threads();
-        #pragma omp parallel shared(info) shared(best) num_threads(2)
+        #pragma omp parallel shared(info) shared(best) num_threads(4)
         {
             #pragma omp single
             solve(&map, 0, info->startUncovered);
@@ -323,9 +323,6 @@ public:
                 }
             }
         }
-
-     //   delete map;
-
         return *best;
     }
 
@@ -364,28 +361,28 @@ private:
             //place H I2
             if (map->canPlaceHorizontal(info->i2)) {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-                #pragma omp task if(uncovered > info->startUncovered /threshold) firstprivate(price) firstprivate(uncovered)
+                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
             if (map->canPlaceVertical(info->i2)) {
                 ArrayMap modifiedMap = map->placeVertical(info->i2);
-                #pragma omp task if(uncovered > info->startUncovered /threshold ) firstprivate(price) firstprivate(uncovered)
+                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
             if (map->canPlaceHorizontal(info->i1)) {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-                #pragma omp task if(uncovered > info->startUncovered /threshold) firstprivate(price) firstprivate(uncovered)
+                #pragma omp task if(uncovered > info->startUncovered - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
             if (map->canPlaceVertical(info->i1)) {
                 ArrayMap modifiedMap = map->placeVertical(info->i1);
-                #pragma omp task if(uncovered > info->startUncovered / threshold) firstprivate(price) firstprivate(uncovered)
+                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
