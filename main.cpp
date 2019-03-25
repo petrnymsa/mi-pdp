@@ -59,6 +59,7 @@ public:
     }
 
 };
+
 // ------------------------------------------------------------------------------------------------------------------
 class ArrayMap {
 public:
@@ -92,8 +93,8 @@ public:
     }
 
     //move constructor
-    ArrayMap(ArrayMap && copy)
-    :rows(copy.rows), columns(copy.columns), nextId(copy.nextId), x(copy.x), y(copy.y), matrix(copy.matrix){
+    ArrayMap(ArrayMap &&copy)
+            : rows(copy.rows), columns(copy.columns), nextId(copy.nextId), x(copy.x), y(copy.y), matrix(copy.matrix) {
 
         copy.matrix = nullptr;
         cout << "MOVE constructor" << endl;
@@ -178,44 +179,40 @@ public:
 
     }
 
-    bool canPlaceHorizontal(int tile) {
-        tile--;
-        if (x + tile >= columns)
+    bool canPlaceHorizontal(const int & tile) {
+        if (x + tile - 1 >= columns)
             return false;
 
-        for (int i = x; i <= x + tile; i++) {
+        for (int i = x; i < x + tile; i++) {
             if (getValue(i, y) != BLOCK_FREE)
                 return false;
         }
         return true;
     }
 
-    bool canPlaceVertical(int tile) {
-        tile--;
-        if (y + tile >= rows)
+    bool canPlaceVertical(const int & tile) {
+        if (y + tile -1 >= rows)
             return false;
 
-        for (int i = y; i <= y + tile; i++) {
+        for (int i = y; i < y + tile; i++) {
             if (getValue(x, i) != BLOCK_FREE)
                 return false;
         }
         return true;
     }
 
-    ArrayMap placeHorizontal(int tile) {
+    ArrayMap placeHorizontal(const int & tile) {
         ArrayMap map = *this;
-        tile--;
-        for (int i = x; i <= x + tile; i++)
+        for (int i = x; i < x + tile; i++)
             map.setValue(i, y, nextId);
         map.nextId++;
         map.nextFree();
         return map;
     }
 
-    ArrayMap placeVertical(int tile) {
+    ArrayMap placeVertical(const int & tile) {
         ArrayMap map = *this;
-        tile--;
-        for (int i = y; i <= y + tile; i++)
+        for (int i = y; i < y + tile; i++)
             map.setValue(x, i, nextId);
         map.nextId++;
         map.nextFree();
@@ -296,12 +293,11 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
 // ------------------------------------------------------------------------------------------------------------------
 class Solver {
 public:
-    Solver(MapInfo * mapInfo)
+    Solver(MapInfo *mapInfo)
             : info(mapInfo), best(nullptr) {
     }
 
     SolverResult &solve() {
-
         ArrayMap map(info->rows, info->columns);
         for (auto &ban : info->banned) {
             map.setValue(ban.first, ban.second, BLOCK_BAN);
@@ -309,12 +305,12 @@ public:
         map.setStart();
 
         best = new SolverResult(map);
-      //  const int threads = omp_get_max_threads();
         #pragma omp parallel shared(info) shared(best) num_threads(4)
         {
             #pragma omp single
-            solve(&map, 0, info->startUncovered);
+            startSolve(&map, 0, info->startUncovered);
         }
+
         //Find left empty tiles
         for (int x = 0; x < best->map.columns; x++) {
             for (int y = 0; y < best->map.rows; y++) {
@@ -331,16 +327,51 @@ public:
     }
 
 private:
-    MapInfo * info;
+    MapInfo *info;
     SolverResult *best;
-    static const int threshold = 2;
 
-    void solve(ArrayMap * map, int price, int uncovered) {
-    //    bool canContinue = true;
+    void startSolve(ArrayMap *map, int price, int uncovered) {
+
+        //place H I2
+        if (map->canPlaceHorizontal(info->i2)) {
+            ArrayMap modifiedMap = map->placeHorizontal(info->i2);
+            #pragma omp task firstprivate(price, uncovered)
+            solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+        }
+
+        //place V I2
+        if (map->canPlaceVertical(info->i2)) {
+            ArrayMap modifiedMap = map->placeVertical(info->i2);
+            #pragma omp task firstprivate(price, uncovered)
+            solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+        }
+
+        //place H I1
+        if (map->canPlaceHorizontal(info->i1)) {
+            ArrayMap modifiedMap = map->placeHorizontal(info->i1);
+            #pragma omp task firstprivate(price, uncovered)
+            solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+        }
+
+        //place V I1
+        if (map->canPlaceVertical(info->i1)) {
+            ArrayMap modifiedMap = map->placeVertical(info->i1);
+            #pragma omp task firstprivate(price, uncovered)
+            solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+        }
+
+        //SKIP on purpose
+        map->nextFree();
+        #pragma omp task firstprivate(price, uncovered)
+        solve(map, price + info->cn, uncovered - 1);
+    }
+
+    void solve(ArrayMap *map, int price, int uncovered) {
+        //    bool canContinue = true;
         int upperPrice = info->computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
         if (price + upperPrice <= best->price)
-                  return;
+            return;
         if (best->price == info->optimPrice)
             return;
 
@@ -361,28 +392,24 @@ private:
             //place H I2
             if (map->canPlaceHorizontal(info->i2)) {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
             if (map->canPlaceVertical(info->i2)) {
                 ArrayMap modifiedMap = map->placeVertical(info->i2);
-                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
             if (map->canPlaceHorizontal(info->i1)) {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-                #pragma omp task if(uncovered > info->startUncovered - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
             if (map->canPlaceVertical(info->i1)) {
                 ArrayMap modifiedMap = map->placeVertical(info->i1);
-                #pragma omp task if(uncovered > info->startUncovered  - info->i1*2) firstprivate(price) firstprivate(uncovered)
                 solve(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
