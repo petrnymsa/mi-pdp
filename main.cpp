@@ -345,7 +345,7 @@ public:
 
         while (count < max && !dataQueue.empty())
         {
-            QueueItem & item = dataQueue.front();
+            QueueItem item = dataQueue.front();
             tasks.push(item);
 
             dataQueue.pop();
