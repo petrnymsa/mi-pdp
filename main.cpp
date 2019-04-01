@@ -1,5 +1,7 @@
 #include <utility>
 
+#include <utility>
+
 #include <iostream>
 #include <vector>
 #include <set>
@@ -7,6 +9,7 @@
 #include <fstream>
 #include <cassert>
 #include <omp.h>
+#include <queue>
 
 using namespace std;
 
@@ -67,6 +70,10 @@ public:
     int nextId;
     int x, y;
 
+    ArrayMap(): matrix(nullptr){
+       // cout << "DEFAULT CONSTRUCTOR ARRAY_MAP " << endl;
+    }
+
     ArrayMap(const int rows, const int columns)
             : rows(rows), columns(columns), nextId(1), x(0), y(0) {
         int n = rows * columns;
@@ -82,9 +89,9 @@ public:
         this->x = copy.x;
         this->y = copy.y;
 
-        int n = rows * columns;
+        unsigned int n = rows * columns;
         this->matrix = new int[n];
-        for (int i = 0; i < n; i++)
+        for (unsigned int i = 0; i < n; i++)
             this->matrix[i] = copy.matrix[i];
     }
 
@@ -93,12 +100,12 @@ public:
     }
 
     //move constructor
-    ArrayMap(ArrayMap &&copy)
-            : rows(copy.rows), columns(copy.columns), nextId(copy.nextId), x(copy.x), y(copy.y), matrix(copy.matrix) {
-
-        copy.matrix = nullptr;
-        cout << "MOVE constructor" << endl;
-    }
+//    ArrayMap(ArrayMap &&copy)
+//            : rows(copy.rows), columns(copy.columns), nextId(copy.nextId), x(copy.x), y(copy.y), matrix(copy.matrix) {
+//
+//        copy.matrix = nullptr;
+//        cout << "MOVE constructor" << endl;
+//    }
 
     ArrayMap &operator=(const ArrayMap &copy) {
         if (this == &copy)
@@ -109,24 +116,24 @@ public:
         return *this;
     }
 
-    //move operator
-    ArrayMap &operator=(ArrayMap &&copy) {
-        if (this == &copy)
-            return *this;
-        delete[] matrix;
-
-        cout << "MOVE =" << endl;
-
-        this->rows = copy.rows;
-        this->columns = copy.columns;
-        this->nextId = copy.nextId;
-        this->x = copy.x;
-        this->y = copy.y;
-        this->matrix = copy.matrix;
-
-        copy.matrix = nullptr;
-        return *this;
-    }
+//    //move operator
+//    ArrayMap &operator=(ArrayMap &&copy) {
+//        if (this == &copy)
+//            return *this;
+//        delete[] matrix;
+//
+//        cout << "MOVE =" << endl;
+//
+//        this->rows = copy.rows;
+//        this->columns = copy.columns;
+//        this->nextId = copy.nextId;
+//        this->x = copy.x;
+//        this->y = copy.y;
+//        this->matrix = copy.matrix;
+//
+//        copy.matrix = nullptr;
+//        return *this;
+//    }
 
     ~ArrayMap() {
         delete[] matrix;
@@ -179,7 +186,7 @@ public:
 
     }
 
-    bool canPlaceHorizontal(const int & tile) {
+    bool canPlaceHorizontal(const int &tile) {
         if (x + tile - 1 >= columns)
             return false;
 
@@ -190,8 +197,8 @@ public:
         return true;
     }
 
-    bool canPlaceVertical(const int & tile) {
-        if (y + tile -1 >= rows)
+    bool canPlaceVertical(const int &tile) {
+        if (y + tile - 1 >= rows)
             return false;
 
         for (int i = y; i < y + tile; i++) {
@@ -201,7 +208,7 @@ public:
         return true;
     }
 
-    ArrayMap placeHorizontal(const int & tile) {
+    ArrayMap placeHorizontal(const int &tile) {
         ArrayMap map = *this;
         for (int i = x; i < x + tile; i++)
             map.setValue(i, y, nextId);
@@ -210,7 +217,7 @@ public:
         return map;
     }
 
-    ArrayMap placeVertical(const int & tile) {
+    ArrayMap placeVertical(const int &tile) {
         ArrayMap map = *this;
         for (int i = y; i < y + tile; i++)
             map.setValue(x, i, nextId);
@@ -290,6 +297,29 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
     return os;
 }
 
+class QueueItem {
+public:
+    ArrayMap map;
+    int price;
+    int uncovered;
+    QueueItem() {
+
+    }
+    QueueItem(const ArrayMap & map, int price, int uncovered) : map(map), price(price), uncovered(uncovered) {
+
+    }
+
+    QueueItem &operator=(const QueueItem &copy) {
+        if (this == &copy)
+            return *this;
+
+        map = copy.map;
+        price = copy.price;
+        uncovered = copy.uncovered;
+        return *this;
+    }
+};
+
 // ------------------------------------------------------------------------------------------------------------------
 class Solver {
 public:
@@ -305,11 +335,32 @@ public:
         map.setStart();
 
         best = new SolverResult(map);
-        #pragma omp parallel shared(info) shared(best) num_threads(4)
-        {
-            #pragma omp single
-            startSolve(&map, 0, info->startUncovered);
-        }
+        unsigned int max = 10;
+     //   cout << "Starting bfs" << endl;
+     //   #pragma omp parallel shared(info) shared(best) num_threads(4)
+     //   {
+           // #pragma omp single
+          //  {
+                while (dataQueue.size() < max) {
+                    solve_bfs(&map, 0, info->startUncovered);
+                }
+           // }
+     //   cout << "End of bfs" << endl;
+
+        unsigned long i = 0;
+            unsigned long n = dataQueue.size();
+            #pragma omp parallel for private(i) shared(info, best)
+            for (i = 0; i < n; i++) {
+                QueueItem item;
+                #pragma omp critical
+                {
+                    item = dataQueue.front();
+                    dataQueue.pop();
+                }
+                solve_dfs(item.map, item.price, item.uncovered);
+            }
+
+     //   }
 
         //Find left empty tiles
         for (int x = 0; x < best->map.columns; x++) {
@@ -329,44 +380,44 @@ public:
 private:
     MapInfo *info;
     SolverResult *best;
+    queue<QueueItem> dataQueue;
 
-    void startSolve(ArrayMap *map, int price, int uncovered) {
+    void solve_bfs(ArrayMap *map, int price, int uncovered) {
 
         //place H I2
         if (map->canPlaceHorizontal(info->i2)) {
             ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-            #pragma omp task firstprivate(price, uncovered)
-            solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            dataQueue.push(QueueItem(modifiedMap, price + info->c2, uncovered - info->i2));
+            // solve(&modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
         if (map->canPlaceVertical(info->i2)) {
             ArrayMap modifiedMap = map->placeVertical(info->i2);
-            #pragma omp task firstprivate(price, uncovered)
-            solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            dataQueue.push(QueueItem(modifiedMap, price + info->c2, uncovered - info->i2));
+            //solve(&modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
         if (map->canPlaceHorizontal(info->i1)) {
             ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-            #pragma omp task firstprivate(price, uncovered)
-            solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+            dataQueue.push(QueueItem(modifiedMap, price + info->c1, uncovered - info->i1));
+            //solve(&modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
         if (map->canPlaceVertical(info->i1)) {
             ArrayMap modifiedMap = map->placeVertical(info->i1);
-            #pragma omp task firstprivate(price, uncovered)
-            solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+            dataQueue.push(QueueItem(modifiedMap, price + info->c1, uncovered - info->i1));
         }
 
         //SKIP on purpose
         map->nextFree();
-        #pragma omp task firstprivate(price, uncovered)
-        solve(map, price + info->cn, uncovered - 1);
+        //solve(map, price + info->cn, uncovered - 1);
+        dataQueue.push(QueueItem(*map, price + info->cn, uncovered - 1));
     }
 
-    void solve(ArrayMap *map, int price, int uncovered) {
+    void solve_dfs(ArrayMap map, int price, int uncovered) {
         //    bool canContinue = true;
         int upperPrice = info->computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
@@ -379,45 +430,45 @@ private:
             #pragma omp critical
             {
                 if (price + info->cn * uncovered > best->price) {
-                    best->map = *map;
+                    best->map = map;
                     best->price = price + info->cn * uncovered;
                 }
             }
         }
 
-        if (map->isOnRightBottomCorner())
+        if (map.isOnRightBottomCorner())
             return;
 
-        if (map->freeBlock()) {
+        if (map.freeBlock()) {
             //place H I2
-            if (map->canPlaceHorizontal(info->i2)) {
-                ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-                solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            if (map.canPlaceHorizontal(info->i2)) {
+                ArrayMap modifiedMap = map.placeHorizontal(info->i2);
+                solve_dfs(modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
-            if (map->canPlaceVertical(info->i2)) {
-                ArrayMap modifiedMap = map->placeVertical(info->i2);
-                solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            if (map.canPlaceVertical(info->i2)) {
+                ArrayMap modifiedMap = map.placeVertical(info->i2);
+                solve_dfs(modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
-            if (map->canPlaceHorizontal(info->i1)) {
-                ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-                solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+            if (map.canPlaceHorizontal(info->i1)) {
+                ArrayMap modifiedMap = map.placeHorizontal(info->i1);
+                solve_dfs(modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
-            if (map->canPlaceVertical(info->i1)) {
-                ArrayMap modifiedMap = map->placeVertical(info->i1);
-                solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+            if (map.canPlaceVertical(info->i1)) {
+                ArrayMap modifiedMap = map.placeVertical(info->i1);
+                solve_dfs(modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
-            map->nextFree();
-            solve(map, price + info->cn, uncovered - 1);
+            map.nextFree();
+            solve_dfs(map, price + info->cn, uncovered - 1);
         } else { // standing on forbiden or placed tile
-            map->nextFree();
-            solve(map, price, uncovered);
+            map.nextFree();
+            solve_dfs(map, price, uncovered);
         }
     }
 
