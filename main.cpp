@@ -70,8 +70,8 @@ public:
     int nextId;
     int x, y;
 
-    ArrayMap(): matrix(nullptr){
-       // cout << "DEFAULT CONSTRUCTOR ARRAY_MAP " << endl;
+    ArrayMap() : matrix(nullptr) {
+        // cout << "DEFAULT CONSTRUCTOR ARRAY_MAP " << endl;
     }
 
     ArrayMap(const int rows, const int columns)
@@ -302,9 +302,11 @@ public:
     ArrayMap map;
     int price;
     int uncovered;
+
     QueueItem() {
 
     }
+
     QueueItem(const ArrayMap & map, int price, int uncovered) : map(map), price(price), uncovered(uncovered) {
 
     }
@@ -335,41 +337,37 @@ public:
         map.setStart();
 
         best = new SolverResult(map);
-        unsigned int max = 10;
-     //   cout << "Starting bfs" << endl;
-     //   #pragma omp parallel shared(info) shared(best) num_threads(4)
-     //   {
-           // #pragma omp single
-          //  {
-                while (dataQueue.size() < max) {
-                    solve_bfs(&map, 0, info->startUncovered);
-                }
-           // }
-     //   cout << "End of bfs" << endl;
+
+        int max = 10;
+        int count = 0;
+
+        solve_bfs(&map, 0, info->startUncovered);
+
+        while (count < max && !dataQueue.empty())
+        {
+            QueueItem & item = dataQueue.front();
+            tasks.push(item);
+
+            dataQueue.pop();
+            solve_bfs(&item.map,item.price, item.uncovered);
+
+            count++;
+        }
 
         unsigned long i = 0;
-            unsigned long n = dataQueue.size();
-            #pragma omp parallel for private(i) shared(info, best)
-            for (i = 0; i < n; i++) {
-                QueueItem item;
-                #pragma omp critical
-                {
-                    item = dataQueue.front();
-                    dataQueue.pop();
-                }
-                solve_dfs(item.map, item.price, item.uncovered);
+        unsigned long n = tasks.size();
+        #pragma omp parallel for private(i) schedule(static) shared(info, best)
+        for (i = 0; i < n; i++) {
+            QueueItem item;
+            #pragma omp critical
+            {
+                item = tasks.front();
+                tasks.pop();
             }
-
-     //   }
-
-        //Find left empty tiles
-        for (int x = 0; x < best->map.columns; x++) {
-            for (int y = 0; y < best->map.rows; y++) {
-                if (best->map.getValue(x, y) == BLOCK_FREE) {
-                    best->empty.insert(make_pair(x, y));
-                }
-            }
+            solve_dfs(&item.map, item.price, item.uncovered);
         }
+
+        FindLeftEmptyTiles();
         return *best;
     }
 
@@ -381,6 +379,7 @@ private:
     MapInfo *info;
     SolverResult *best;
     queue<QueueItem> dataQueue;
+    queue<QueueItem> tasks;
 
     void solve_bfs(ArrayMap *map, int price, int uncovered) {
 
@@ -417,7 +416,7 @@ private:
         dataQueue.push(QueueItem(*map, price + info->cn, uncovered - 1));
     }
 
-    void solve_dfs(ArrayMap map, int price, int uncovered) {
+    void solve_dfs(ArrayMap * map, int price, int uncovered) {
         //    bool canContinue = true;
         int upperPrice = info->computeUpperPrice(uncovered);
         //  printMap(map, x, y, price, uncovered);
@@ -430,45 +429,55 @@ private:
             #pragma omp critical
             {
                 if (price + info->cn * uncovered > best->price) {
-                    best->map = map;
+                    best->map = *map;
                     best->price = price + info->cn * uncovered;
                 }
             }
         }
 
-        if (map.isOnRightBottomCorner())
+        if (map->isOnRightBottomCorner())
             return;
 
-        if (map.freeBlock()) {
+        if (map->freeBlock()) {
             //place H I2
-            if (map.canPlaceHorizontal(info->i2)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info->i2);
-                solve_dfs(modifiedMap, price + info->c2, uncovered - info->i2);
+            if (map->canPlaceHorizontal(info->i2)) {
+                ArrayMap modifiedMap = map->placeHorizontal(info->i2);
+                solve_dfs(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
-            if (map.canPlaceVertical(info->i2)) {
-                ArrayMap modifiedMap = map.placeVertical(info->i2);
-                solve_dfs(modifiedMap, price + info->c2, uncovered - info->i2);
+            if (map->canPlaceVertical(info->i2)) {
+                ArrayMap modifiedMap = map->placeVertical(info->i2);
+                solve_dfs(&modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
-            if (map.canPlaceHorizontal(info->i1)) {
-                ArrayMap modifiedMap = map.placeHorizontal(info->i1);
-                solve_dfs(modifiedMap, price + info->c1, uncovered - info->i1);
+            if (map->canPlaceHorizontal(info->i1)) {
+                ArrayMap modifiedMap = map->placeHorizontal(info->i1);
+                solve_dfs(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
-            if (map.canPlaceVertical(info->i1)) {
-                ArrayMap modifiedMap = map.placeVertical(info->i1);
-                solve_dfs(modifiedMap, price + info->c1, uncovered - info->i1);
+            if (map->canPlaceVertical(info->i1)) {
+                ArrayMap modifiedMap = map->placeVertical(info->i1);
+                solve_dfs(&modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
-            map.nextFree();
+            map->nextFree();
             solve_dfs(map, price + info->cn, uncovered - 1);
         } else { // standing on forbiden or placed tile
-            map.nextFree();
+            map->nextFree();
             solve_dfs(map, price, uncovered);
+        }
+    }
+
+    void FindLeftEmptyTiles() const {//Find left empty tiles
+        for (int x = 0; x < best->map.columns; x++) {
+            for (int y = 0; y < best->map.rows; y++) {
+                if (best->map.getValue(x, y) == BLOCK_FREE) {
+                    best->empty.insert(make_pair(x, y));
+                }
+            }
         }
     }
 
