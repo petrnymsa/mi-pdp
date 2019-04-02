@@ -338,7 +338,7 @@ public:
 
         best = new SolverResult(map);
 
-        int max = 10;
+        int max = 8;
         int count = 0;
 
         solve_bfs(&map, 0, info->startUncovered);
@@ -385,29 +385,26 @@ private:
 
         //place H I2
         if (map->canPlaceHorizontal(info->i2)) {
-            ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-            dataQueue.push(QueueItem(modifiedMap, price + info->c2, uncovered - info->i2));
+            dataQueue.push(QueueItem(map->placeHorizontal(info->i2), price + info->c2, uncovered - info->i2));
             // solve(&modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
         if (map->canPlaceVertical(info->i2)) {
-            ArrayMap modifiedMap = map->placeVertical(info->i2);
-            dataQueue.push(QueueItem(modifiedMap, price + info->c2, uncovered - info->i2));
+          //  ArrayMap modifiedMap = map->placeVertical(info->i2);
+            dataQueue.push(QueueItem(map->placeVertical(info->i2), price + info->c2, uncovered - info->i2));
             //solve(&modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
         if (map->canPlaceHorizontal(info->i1)) {
-            ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-            dataQueue.push(QueueItem(modifiedMap, price + info->c1, uncovered - info->i1));
+            dataQueue.push(QueueItem(map->placeHorizontal(info->i1), price + info->c1, uncovered - info->i1));
             //solve(&modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
         if (map->canPlaceVertical(info->i1)) {
-            ArrayMap modifiedMap = map->placeVertical(info->i1);
-            dataQueue.push(QueueItem(modifiedMap, price + info->c1, uncovered - info->i1));
+            dataQueue.push(QueueItem(map->placeVertical(info->i1), price + info->c1, uncovered - info->i1));
         }
 
         //SKIP on purpose
