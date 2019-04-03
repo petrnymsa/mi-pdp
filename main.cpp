@@ -10,6 +10,7 @@
 #include <cassert>
 #include <omp.h>
 #include <queue>
+#include <deque>
 
 using namespace std;
 
@@ -74,12 +75,15 @@ public:
         // cout << "DEFAULT CONSTRUCTOR ARRAY_MAP " << endl;
     }
 
-    ArrayMap(const int rows, const int columns)
+    ArrayMap(const int rows, const int columns, const set<pair<int,int>> & banned)
             : rows(rows), columns(columns), nextId(1), x(0), y(0) {
         int n = rows * columns;
         this->matrix = new int[n];
         for (int i = 0; i < n; i++)
             matrix[i] = BLOCK_FREE;
+
+        for(auto & ban : banned)
+            setValue(ban.first, ban.second, BLOCK_BAN);
     }
 
     void writeCopy(const ArrayMap &copy) {
@@ -330,39 +334,32 @@ public:
     }
 
     SolverResult &solve() {
-        ArrayMap map(info->rows, info->columns);
-        for (auto &ban : info->banned) {
-            map.setValue(ban.first, ban.second, BLOCK_BAN);
-        }
+        ArrayMap map(info->rows, info->columns, info->banned);
+//        for (auto &ban : info->banned) {
+//            map.setValue(ban.first, ban.second, BLOCK_BAN);
+//        }
         map.setStart();
-
         best = new SolverResult(map);
 
-        int max = 8;
-        int count = 0;
-
+        unsigned int max = 8;
         solve_bfs(&map, 0, info->startUncovered);
 
-        while (count < max && !dataQueue.empty())
+        while (dataQueue.size() < max)
         {
             QueueItem item = dataQueue.front();
-            tasks.push(item);
-
-            dataQueue.pop();
+            dataQueue.pop_front();
             solve_bfs(&item.map,item.price, item.uncovered);
-
-            count++;
         }
 
         unsigned long i = 0;
-        unsigned long n = tasks.size();
+        unsigned long n = dataQueue.size();
         #pragma omp parallel for private(i) schedule(static) shared(info, best)
         for (i = 0; i < n; i++) {
             QueueItem item;
             #pragma omp critical
             {
-                item = tasks.front();
-                tasks.pop();
+                item = dataQueue.front();
+                dataQueue.pop_front();
             }
             solve_dfs(&item.map, item.price, item.uncovered);
         }
@@ -378,39 +375,33 @@ public:
 private:
     MapInfo *info;
     SolverResult *best;
-    queue<QueueItem> dataQueue;
-    queue<QueueItem> tasks;
+    deque<QueueItem> dataQueue;
 
     void solve_bfs(ArrayMap *map, int price, int uncovered) {
 
         //place H I2
         if (map->canPlaceHorizontal(info->i2)) {
-            dataQueue.push(QueueItem(map->placeHorizontal(info->i2), price + info->c2, uncovered - info->i2));
-            // solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            dataQueue.emplace_back(map->placeHorizontal(info->i2), price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
         if (map->canPlaceVertical(info->i2)) {
-          //  ArrayMap modifiedMap = map->placeVertical(info->i2);
-            dataQueue.push(QueueItem(map->placeVertical(info->i2), price + info->c2, uncovered - info->i2));
-            //solve(&modifiedMap, price + info->c2, uncovered - info->i2);
+            dataQueue.emplace_back(map->placeVertical(info->i2), price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
         if (map->canPlaceHorizontal(info->i1)) {
-            dataQueue.push(QueueItem(map->placeHorizontal(info->i1), price + info->c1, uncovered - info->i1));
-            //solve(&modifiedMap, price + info->c1, uncovered - info->i1);
+            dataQueue.emplace_back(map->placeHorizontal(info->i1), price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
         if (map->canPlaceVertical(info->i1)) {
-            dataQueue.push(QueueItem(map->placeVertical(info->i1), price + info->c1, uncovered - info->i1));
+            dataQueue.emplace_back(map->placeVertical(info->i1), price + info->c1, uncovered - info->i1);
         }
 
         //SKIP on purpose
         map->nextFree();
-        //solve(map, price + info->cn, uncovered - 1);
-        dataQueue.push(QueueItem(*map, price + info->cn, uncovered - 1));
+        dataQueue.emplace_back(*map, price + info->cn, uncovered - 1);
     }
 
     void solve_dfs(ArrayMap * map, int price, int uncovered) {

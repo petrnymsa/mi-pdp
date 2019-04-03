@@ -1,0 +1,33 @@
+TASK
+./data/poi1.txt: 0m0.053s
+./data/poi10.txt: 0m14.566s
+./data/poi11.txt: 0m0.175s
+./data/poi12.txt: 0m8.412s
+./data/poi2.txt: 0m0.039s
+./data/poi3.txt: 0m0.764s
+./data/poi4.txt: 1m43.843s
+./data/poi5.txt: 0m0.029s
+./data/poi6.txt: 0m0.043s
+./data/poi7.txt: 0m0.122s
+./data/poi8.txt: 0m19.018s
+./data/poi9.txt: 0m0.456s
+./data/test2.txt: 0m0.026s
+./data/test3.txt: 0m0.026s
+./data/test4.txt: 0m0.025s
+
+FOR
+./data/poi1.txt: 0m0.027s
+./data/poi10.txt: 0m15.940s
+./data/poi11.txt: 0m0.198s
+./data/poi12.txt: 0m9.195s
+./data/poi2.txt: 0m0.041s
+./data/poi3.txt: 0m0.897s
+./data/poi4.txt: 1m48.755s
+./data/poi5.txt: 0m0.026s
+./data/poi6.txt: 0m0.096s
+./data/poi7.txt: 0m0.126s
+./data/poi8.txt: 0m28.947s
+./data/poi9.txt: 0m0.877s
+./data/test2.txt: 0m0.020s
+./data/test3.txt: 0m0.055s
+./data/test4.txt: 0m0.027s
