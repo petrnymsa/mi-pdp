@@ -30,6 +30,34 @@ public:
             setValue(ban.first, ban.second, BLOCK_BAN);
     }
 
+    ArrayMap(int * map, const int & rows, const int & columns, const int & nextId, const int & x, const int & y)
+    :rows(rows), columns(columns), nextId(nextId), x(x), y(y){
+        int n = rows * columns;
+        matrix = new int[n];
+        for(int i = 0; i < n; i++)
+            matrix[i] = map[i];
+    }
+
+
+    pair<int, int*> serialize(){
+        // MAP SIZE + x + y + nextId + rows + columns
+        int n = this->rows * this->columns;
+        int size = serialize_size();
+        int * buffer = new int[size];
+
+        for(int i = 0; i < n;i++)
+            buffer[i] = matrix[i];
+        buffer[n] = nextId;
+        buffer[n+1] = x;
+        buffer[n+2] = y;
+
+        return make_pair(size, buffer);
+    }
+
+    int serialize_size(){
+        return this->rows * this->columns + 3;
+    }
+
     void writeCopy(const ArrayMap &copy) {
         this->rows = copy.rows;
         this->columns = copy.columns;
