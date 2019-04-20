@@ -10,17 +10,14 @@
 #include <deque>
 #include <mpi.h>
 
-
 #include "src/map_info.h"
 #include "src/array_map.h"
-
 
 using namespace std;
 
 #define TAG_WORK 1
 #define TAG_END 2
 #define TAG_DONE 4
-
 
 // ------------------------------------------------------------------------------------------------------------------
 class SolverResult {
@@ -29,12 +26,12 @@ public:
     int price;
     ArrayMap map;
 
-    SolverResult(const ArrayMap & map)
+    SolverResult(const ArrayMap &map)
             : price(INT32_MIN), map(map) {
     }
 
-    SolverResult(const int & bestPrice, const ArrayMap & map)
-            : price(bestPrice),  map(map) {
+    SolverResult(const int &bestPrice, const ArrayMap &map)
+            : price(bestPrice), map(map) {
     }
 
     friend ostream &operator<<(ostream &out, const SolverResult &result);
@@ -123,12 +120,12 @@ public:
 class Solver {
 public:
     SolverResult *best;
-   // int num_procs;
+    // int num_procs;
 
     Solver(MapInfo *mapInfo)
             : best(nullptr), info(mapInfo) {
 
-      //  int num_procs;
+        //  int num_procs;
 
         //MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     }
@@ -195,7 +192,6 @@ private:
             MPI_Recv(buffer.data(), bufferSize, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
 
-
             int n = info->columns * info->rows;
             int nextId = buffer[n];
             int x = buffer[n + 1];
@@ -204,7 +200,7 @@ private:
 
             //update best price
             // update best map
-            if(bestPriceUpdate > best->price) {
+            if (bestPriceUpdate > best->price) {
                 cout << "MASTER - update PRICE to " << bestPriceUpdate << endl;
                 best->map = ArrayMap(buffer.data(), info->rows, info->columns, nextId, x, y);
                 best->price = bestPriceUpdate;
@@ -217,7 +213,7 @@ private:
                 // prepare task
                 pair<int, int *> dataInfo = task.serialize(best->price);
                 MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
-                cout << "MASTER - sended work to " << status.MPI_SOURCE  << endl;
+                cout << "MASTER - sended work to " << status.MPI_SOURCE << endl;
                 delete[] dataInfo.second;
             } else {  // no more work -- finish
                 int dummy = 1; // ???
@@ -254,11 +250,11 @@ private:
             ArrayMap map(buffer.data(), info->rows, info->columns, nextId, x, y);
             best = new SolverResult(bestPrice, map);
 
-            //  #pragma omp parallel shared(info) shared(best) num_threads(4)
-            //     {
-            //        #pragma omp single
-            startSolve(id, &map, price, uncovered);
-            //   }
+            #pragma omp parallel shared(info) shared(best) num_threads(4)
+            {
+                #pragma omp single
+                startSolve(id, &map, price, uncovered);
+            }
 
             //send UPDATED solution
             int size = best->map.serialize_size() + 1;
@@ -315,14 +311,13 @@ private:
             return;
 
         if (price + info->cn * uncovered > best->price) {
-            // #pragma omp critical
-            //  {
-            if (price + info->cn * uncovered > best->price) {
-                best->map = *map;
-                best->price = price + info->cn * uncovered;
+            #pragma omp critical
+            {
+                if (price + info->cn * uncovered > best->price) {
+                    best->map = *map;
+                    best->price = price + info->cn * uncovered;
+                }
             }
-
-          //}
         }
 
         if (map->isOnRightBottomCorner())
@@ -361,38 +356,38 @@ private:
         }
     }
 
-    void startSolve(const int &id, ArrayMap *map, int price, int uncovered) {
+    void startSolve(int id, ArrayMap *map, int price, int uncovered) {
         //place H I2
         if (map->canPlaceHorizontal(info->i2)) {
             ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-            //  #pragma omp task firstprivate(price, uncovered)
+            #pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
         if (map->canPlaceVertical(info->i2)) {
             ArrayMap modifiedMap = map->placeVertical(info->i2);
-            //  #pragma omp task firstprivate(price, uncovered)
+            #pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
         if (map->canPlaceHorizontal(info->i1)) {
             ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-            //  #pragma omp task firstprivate(price, uncovered)
+            #pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
         if (map->canPlaceVertical(info->i1)) {
             ArrayMap modifiedMap = map->placeVertical(info->i1);
-            //  #pragma omp task firstprivate(price, uncovered)
+            #pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //SKIP on purpose
         map->nextFree();
-        //  #pragma omp task firstprivate(price, uncovered)
+        #pragma omp task firstprivate(price, uncovered)
         solve_dfs(id, map, price + info->cn, uncovered - 1);
     }
 
