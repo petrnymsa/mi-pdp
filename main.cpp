@@ -69,8 +69,6 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
     return os;
 }
 // ------------------------------------------------------------------------------------------------------------------
-
-
 class QueueItem {
 public:
     ArrayMap map;
@@ -115,7 +113,6 @@ public:
         return make_pair(size, buffer);
     }
 };
-
 // ------------------------------------------------------------------------------------------------------------------
 class Solver {
 public:
@@ -124,10 +121,6 @@ public:
 
     Solver(MapInfo *mapInfo)
             : best(nullptr), info(mapInfo) {
-
-        //  int num_procs;
-
-        //MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     }
 
     void solve() {
@@ -138,8 +131,6 @@ public:
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
         // MASTER
         if (proc_num == 0) {
-
-
             master(num_procs);
             // as master, no more work, all slaves done. Finish result.
             FindLeftEmptyTiles();
@@ -162,7 +153,7 @@ private:
         ArrayMap map(info->rows, info->columns, info->banned);
         map.setStart();
         best = new SolverResult(map);
-        cout << "MASTER - prepare data bfs" << endl;
+
         // prepare data with BFS
         const unsigned int max = 8;
         prepare_tasks(map, max);
@@ -170,7 +161,9 @@ private:
         int workers = num_procs - 1;
         int initialWorkers = workers;
         // initial send of work
+#ifdef DEBUG
         cout << "MASTER - initial-send-to-work, workers" << workers << ", works to do: " << dataQueue.size() << endl;
+#endif
         for (int workerId = 1; workerId <= workers && !dataQueue.empty(); workerId++) {
             QueueItem task = dataQueue.front();
             dataQueue.pop_front();
@@ -178,7 +171,9 @@ private:
             initialWorkers--;
             pair<int, int *> dataInfo = task.serialize(best->price);
             MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, workerId, TAG_WORK, MPI_COMM_WORLD);
+#ifdef DEBUG
             cout << "MASTER - initial work sended to " << workerId << endl;
+#endif
             delete[] dataInfo.second;
         }
 
@@ -187,7 +182,9 @@ private:
         int bufferSize = map.serialize_size() + 1; // result from worker -- this can have always same size
         while (workers > 0) {
             vector<int> buffer(bufferSize);
+            #ifdef DEBUG
             cout << "MASTER - waiting for slaves " << endl;
+            #endif
             MPI_Status status; // wait for result from some slave
             MPI_Recv(buffer.data(), bufferSize, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
@@ -201,34 +198,45 @@ private:
             //update best price
             // update best map
             if (bestPriceUpdate > best->price) {
+#ifdef DEBUG
                 cout << "MASTER - update PRICE to " << bestPriceUpdate << endl;
+#endif
                 best->map = ArrayMap(buffer.data(), info->rows, info->columns, nextId, x, y);
                 best->price = bestPriceUpdate;
             }
 
             if (!dataQueue.empty()) {   //more work
+#ifdef DEBUG
                 cout << "MASTER - sending work to " << status.MPI_SOURCE << endl;
+#endif
                 QueueItem task = dataQueue.front();
                 dataQueue.pop_front();
                 // prepare task
                 pair<int, int *> dataInfo = task.serialize(best->price);
                 MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
+#ifdef DEBUG
                 cout << "MASTER - sended work to " << status.MPI_SOURCE << endl;
+#endif
                 delete[] dataInfo.second;
             } else {  // no more work -- finish
                 int dummy = 1; // ???
+#ifdef DEBUG
                 cout << "MASTER - no more work for " << status.MPI_SOURCE << endl;
+#endif
                 MPI_Send(&dummy, 1, MPI_INT, status.MPI_SOURCE, TAG_END, MPI_COMM_WORLD);
                 workers--;
             }
         }
-
+#ifdef DEBUG
         cout << "MASTER -- quit " << workers << endl;
+#endif
     }
 
     void slave(const int &id) {
         int bufferSize = info->columns * info->rows + 6;
+        #ifdef DEBUG
         cout << "SLAVE:= " << id << " started" << endl;
+        #endif
         while (true) {
             std::vector<int> buffer(bufferSize);
 
@@ -266,12 +274,15 @@ private:
 
             data[mapSerialize.first] = best->price;
             MPI_Send(data, size, MPI_INT, 0, TAG_DONE, MPI_COMM_WORLD);
+            #ifdef DEBUG
             cout << "SLAVE:= " << id << " - sending DONE_UPDATE OK" << endl;
-
+            #endif
             delete[] mapSerialize.second;
             delete[] data;
         }
+        #ifdef DEBUG
         cout << "SLAVE:= " << id << " ends" << endl;
+        #endif
 
     }
 
