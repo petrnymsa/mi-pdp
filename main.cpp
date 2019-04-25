@@ -473,12 +473,26 @@ int main(int argc, char **argv) {
         return -1;
         // mapInfo = load(cin);
     }
-    Solver solver(mapInfo);
-    solver.solve();
 
-    if (proc_num == 0) {
+
+    Solver solver(mapInfo);
+    
+    
+
+    if (proc_num == 0) {     
+        auto t1 = MPI_Wtime();
+        solver.solve();
+        auto t2 = MPI_Wtime();
+        #ifdef PRINTSOL
         cout << *solver.best;
+        cout << "Time: " << t2 - t1 << endl;
+        #else
+        cout << t2 - t1 << endl;
+        #endif
     }
+    else
+        solver.solve();
+
     delete mapInfo;
 
     MPI_Finalize();
