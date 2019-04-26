@@ -20,24 +20,28 @@ using namespace std;
 #define TAG_DONE 4
 
 // ------------------------------------------------------------------------------------------------------------------
-class SolverResult {
-public:
+class SolverResult
+{
+  public:
     set<pair<int, int>> empty;
     int price;
     ArrayMap map;
 
     SolverResult(const ArrayMap &map)
-            : price(INT32_MIN), map(map) {
+        : price(INT32_MIN), map(map)
+    {
     }
 
     SolverResult(const int &bestPrice, const ArrayMap &map)
-            : price(bestPrice), map(map) {
+        : price(bestPrice), map(map)
+    {
     }
 
     friend ostream &operator<<(ostream &out, const SolverResult &result);
 };
 
-ostream &operator<<(ostream &os, const SolverResult &result) {
+ostream &operator<<(ostream &os, const SolverResult &result)
+{
     os << result.map;
     os << result.price << endl;
     os << result.empty.size() << endl;
@@ -47,20 +51,24 @@ ostream &operator<<(ostream &os, const SolverResult &result) {
     return os;
 }
 
-ostream &operator<<(ostream &os, const ArrayMap &map) {
-    for (int y = 0; y < map.rows; y++) {
-        for (int x = 0; x < map.columns; x++) {
+ostream &operator<<(ostream &os, const ArrayMap &map)
+{
+    for (int y = 0; y < map.rows; y++)
+    {
+        for (int x = 0; x < map.columns; x++)
+        {
             int p = map.getValue(x, y);
-            switch (p) {
-                case BLOCK_FREE :
-                    os << ".\t";
-                    break;
-                case BLOCK_BAN :
-                    os << "X\t";
-                    break;
-                default:
-                    os << p << "\t";
-                    break;
+            switch (p)
+            {
+            case BLOCK_FREE:
+                os << ".\t";
+                break;
+            case BLOCK_BAN:
+                os << "X\t";
+                break;
+            default:
+                os << p << "\t";
+                break;
             }
         }
         os << endl;
@@ -69,23 +77,23 @@ ostream &operator<<(ostream &os, const ArrayMap &map) {
     return os;
 }
 // ------------------------------------------------------------------------------------------------------------------
-
-
-class QueueItem {
-public:
+class QueueItem
+{
+  public:
     ArrayMap map;
     int price;
     int uncovered;
 
-    QueueItem() {
-
+    QueueItem()
+    {
     }
 
-    QueueItem(const ArrayMap &map, int price, int uncovered) : map(map), price(price), uncovered(uncovered) {
-
+    QueueItem(const ArrayMap &map, int price, int uncovered) : map(map), price(price), uncovered(uncovered)
+    {
     }
 
-    QueueItem &operator=(const QueueItem &copy) {
+    QueueItem &operator=(const QueueItem &copy)
+    {
         if (this == &copy)
             return *this;
 
@@ -95,14 +103,16 @@ public:
         return *this;
     }
 
-    pair<int, int *> serialize(const int &bestPrice) {
+    pair<int, int *> serialize(const int &bestPrice)
+    {
         pair<int, int *> sr_map = map.serialize();
         int map_size = sr_map.first;
         // map size + price + uncovered + bestPrice
         int size = map_size + 3;
         int *buffer = new int[size];
 
-        for (int i = 0; i < map_size; i++) {
+        for (int i = 0; i < map_size; i++)
+        {
             buffer[i] = sr_map.second[i];
         }
 
@@ -115,54 +125,54 @@ public:
         return make_pair(size, buffer);
     }
 };
-
 // ------------------------------------------------------------------------------------------------------------------
-class Solver {
-public:
+class Solver
+{
+  public:
     SolverResult *best;
     // int num_procs;
 
     Solver(MapInfo *mapInfo)
-            : best(nullptr), info(mapInfo) {
-
-        //  int num_procs;
-
-        //MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+        : best(nullptr), info(mapInfo)
+    {
     }
 
-    void solve() {
+    void solve()
+    {
 
         int num_procs;
         int proc_num;
         MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
         MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
         // MASTER
-        if (proc_num == 0) {
-
-
+        if (proc_num == 0)
+        {
             master(num_procs);
             // as master, no more work, all slaves done. Finish result.
             FindLeftEmptyTiles();
-
-        } else { //SLAVE
+        }
+        else
+        { //SLAVE
             slave(proc_num);
         }
     }
 
-    ~Solver() {
+    ~Solver()
+    {
         delete best;
     }
 
-private:
+  private:
     MapInfo *info;
     deque<QueueItem> dataQueue;
 
-    void master(const int &num_procs) {
+    void master(const int &num_procs)
+    {
         // prepare map
         ArrayMap map(info->rows, info->columns, info->banned);
         map.setStart();
         best = new SolverResult(map);
-        cout << "MASTER - prepare data bfs" << endl;
+
         // prepare data with BFS
         const unsigned int max = 8;
         prepare_tasks(map, max);
@@ -170,27 +180,34 @@ private:
         int workers = num_procs - 1;
         int initialWorkers = workers;
         // initial send of work
+#ifdef DEBUG
         cout << "MASTER - initial-send-to-work, workers" << workers << ", works to do: " << dataQueue.size() << endl;
-        for (int workerId = 1; workerId <= workers && !dataQueue.empty(); workerId++) {
+#endif
+        for (int workerId = 1; workerId <= workers && !dataQueue.empty(); workerId++)
+        {
             QueueItem task = dataQueue.front();
             dataQueue.pop_front();
 
             initialWorkers--;
             pair<int, int *> dataInfo = task.serialize(best->price);
             MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, workerId, TAG_WORK, MPI_COMM_WORLD);
+#ifdef DEBUG
             cout << "MASTER - initial work sended to " << workerId << endl;
+#endif
             delete[] dataInfo.second;
         }
 
         // repair workers -- that can happen only when initial work was << than number of workers
         workers -= initialWorkers;
         int bufferSize = map.serialize_size() + 1; // result from worker -- this can have always same size
-        while (workers > 0) {
+        while (workers > 0)
+        {
             vector<int> buffer(bufferSize);
+#ifdef DEBUG
             cout << "MASTER - waiting for slaves " << endl;
+#endif
             MPI_Status status; // wait for result from some slave
             MPI_Recv(buffer.data(), bufferSize, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
 
             int n = info->columns * info->rows;
             int nextId = buffer[n];
@@ -200,43 +217,61 @@ private:
 
             //update best price
             // update best map
-            if (bestPriceUpdate > best->price) {
+            if (bestPriceUpdate > best->price)
+            {
+#ifdef DEBUG
                 cout << "MASTER - update PRICE to " << bestPriceUpdate << endl;
+#endif
                 best->map = ArrayMap(buffer.data(), info->rows, info->columns, nextId, x, y);
                 best->price = bestPriceUpdate;
             }
 
-            if (!dataQueue.empty()) {   //more work
+            if (!dataQueue.empty())
+            { //more work
+#ifdef DEBUG
                 cout << "MASTER - sending work to " << status.MPI_SOURCE << endl;
+#endif
                 QueueItem task = dataQueue.front();
                 dataQueue.pop_front();
                 // prepare task
                 pair<int, int *> dataInfo = task.serialize(best->price);
                 MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
+#ifdef DEBUG
                 cout << "MASTER - sended work to " << status.MPI_SOURCE << endl;
+#endif
                 delete[] dataInfo.second;
-            } else {  // no more work -- finish
+            }
+            else
+            {                  // no more work -- finish
                 int dummy = 1; // ???
+#ifdef DEBUG
                 cout << "MASTER - no more work for " << status.MPI_SOURCE << endl;
+#endif
                 MPI_Send(&dummy, 1, MPI_INT, status.MPI_SOURCE, TAG_END, MPI_COMM_WORLD);
                 workers--;
             }
         }
-
+#ifdef DEBUG
         cout << "MASTER -- quit " << workers << endl;
+#endif
     }
 
-    void slave(const int &id) {
+    void slave(const int &id)
+    {
         int bufferSize = info->columns * info->rows + 6;
+#ifdef DEBUG
         cout << "SLAVE:= " << id << " started" << endl;
-        while (true) {
+#endif
+        while (true)
+        {
             std::vector<int> buffer(bufferSize);
 
             MPI_Status status;
             MPI_Recv(buffer.data(), bufferSize, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
             // signal to quit. Can go home.
-            if (status.MPI_TAG == TAG_END) break;
+            if (status.MPI_TAG == TAG_END)
+                break;
 
             unsigned int n = info->columns * info->rows;
             int nextId = buffer[n];
@@ -250,9 +285,9 @@ private:
             ArrayMap map(buffer.data(), info->rows, info->columns, nextId, x, y);
             best = new SolverResult(bestPrice, map);
 
-            #pragma omp parallel shared(info) shared(best) num_threads(4)
+#pragma omp parallel shared(info, best)
             {
-                #pragma omp single
+#pragma omp single
                 startSolve(id, &map, price, uncovered);
             }
 
@@ -266,34 +301,41 @@ private:
 
             data[mapSerialize.first] = best->price;
             MPI_Send(data, size, MPI_INT, 0, TAG_DONE, MPI_COMM_WORLD);
+#ifdef DEBUG
             cout << "SLAVE:= " << id << " - sending DONE_UPDATE OK" << endl;
-
+#endif
             delete[] mapSerialize.second;
             delete[] data;
         }
+#ifdef DEBUG
         cout << "SLAVE:= " << id << " ends" << endl;
-
+#endif
     }
 
-    void solve_bfs(ArrayMap *map, int price, int uncovered) {
+    void solve_bfs(ArrayMap *map, int price, int uncovered)
+    {
 
         //place H I2
-        if (map->canPlaceHorizontal(info->i2)) {
+        if (map->canPlaceHorizontal(info->i2))
+        {
             dataQueue.emplace_back(map->placeHorizontal(info->i2), price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
-        if (map->canPlaceVertical(info->i2)) {
+        if (map->canPlaceVertical(info->i2))
+        {
             dataQueue.emplace_back(map->placeVertical(info->i2), price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
-        if (map->canPlaceHorizontal(info->i1)) {
+        if (map->canPlaceHorizontal(info->i1))
+        {
             dataQueue.emplace_back(map->placeHorizontal(info->i1), price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
-        if (map->canPlaceVertical(info->i1)) {
+        if (map->canPlaceVertical(info->i1))
+        {
             dataQueue.emplace_back(map->placeVertical(info->i1), price + info->c1, uncovered - info->i1);
         }
 
@@ -302,7 +344,8 @@ private:
         dataQueue.emplace_back(*map, price + info->cn, uncovered - 1);
     }
 
-    void solve_dfs(const int &id, ArrayMap *map, int price, int uncovered) {
+    void solve_dfs(const int &id, ArrayMap *map, int price, int uncovered)
+    {
         int upperPrice = info->computeUpperPrice(uncovered);
 
         if (price + upperPrice <= best->price)
@@ -310,10 +353,12 @@ private:
         if (best->price == info->optimPrice)
             return;
 
-        if (price + info->cn * uncovered > best->price) {
-            #pragma omp critical
+        if (price + info->cn * uncovered > best->price)
+        {
+#pragma omp critical
             {
-                if (price + info->cn * uncovered > best->price) {
+                if (price + info->cn * uncovered > best->price)
+                {
                     best->map = *map;
                     best->price = price + info->cn * uncovered;
                 }
@@ -323,106 +368,123 @@ private:
         if (map->isOnRightBottomCorner())
             return;
 
-        if (map->freeBlock()) {
+        if (map->freeBlock())
+        {
             //place H I2
-            if (map->canPlaceHorizontal(info->i2)) {
+            if (map->canPlaceHorizontal(info->i2))
+            {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i2);
                 solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place V I2
-            if (map->canPlaceVertical(info->i2)) {
+            if (map->canPlaceVertical(info->i2))
+            {
                 ArrayMap modifiedMap = map->placeVertical(info->i2);
                 solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
             }
 
             //place H I1
-            if (map->canPlaceHorizontal(info->i1)) {
+            if (map->canPlaceHorizontal(info->i1))
+            {
                 ArrayMap modifiedMap = map->placeHorizontal(info->i1);
                 solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
             }
 
             //place V I1
-            if (map->canPlaceVertical(info->i1)) {
+            if (map->canPlaceVertical(info->i1))
+            {
                 ArrayMap modifiedMap = map->placeVertical(info->i1);
                 solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
             }
             //SKIP on purpose
             map->nextFree();
             solve_dfs(id, map, price + info->cn, uncovered - 1);
-        } else { // standing on forbiden or placed tile
+        }
+        else
+        { // standing on forbiden or placed tile
             map->nextFree();
             solve_dfs(id, map, price, uncovered);
         }
     }
 
-    void startSolve(int id, ArrayMap *map, int price, int uncovered) {
+    void startSolve(int id, ArrayMap *map, int price, int uncovered)
+    {
         //place H I2
-        if (map->canPlaceHorizontal(info->i2)) {
+        if (map->canPlaceHorizontal(info->i2))
+        {
             ArrayMap modifiedMap = map->placeHorizontal(info->i2);
-            #pragma omp task firstprivate(price, uncovered)
+#pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place V I2
-        if (map->canPlaceVertical(info->i2)) {
+        if (map->canPlaceVertical(info->i2))
+        {
             ArrayMap modifiedMap = map->placeVertical(info->i2);
-            #pragma omp task firstprivate(price, uncovered)
+#pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c2, uncovered - info->i2);
         }
 
         //place H I1
-        if (map->canPlaceHorizontal(info->i1)) {
+        if (map->canPlaceHorizontal(info->i1))
+        {
             ArrayMap modifiedMap = map->placeHorizontal(info->i1);
-            #pragma omp task firstprivate(price, uncovered)
+#pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //place V I1
-        if (map->canPlaceVertical(info->i1)) {
+        if (map->canPlaceVertical(info->i1))
+        {
             ArrayMap modifiedMap = map->placeVertical(info->i1);
-            #pragma omp task firstprivate(price, uncovered)
+#pragma omp task firstprivate(price, uncovered)
             solve_dfs(id, &modifiedMap, price + info->c1, uncovered - info->i1);
         }
 
         //SKIP on purpose
         map->nextFree();
-        #pragma omp task firstprivate(price, uncovered)
+#pragma omp task firstprivate(price, uncovered)
         solve_dfs(id, map, price + info->cn, uncovered - 1);
     }
 
-
-    void FindLeftEmptyTiles() const {//Find left empty tiles
-        for (int x = 0; x < best->map.columns; x++) {
-            for (int y = 0; y < best->map.rows; y++) {
-                if (best->map.getValue(x, y) == BLOCK_FREE) {
+    void FindLeftEmptyTiles() const
+    { //Find left empty tiles
+        for (int x = 0; x < best->map.columns; x++)
+        {
+            for (int y = 0; y < best->map.rows; y++)
+            {
+                if (best->map.getValue(x, y) == BLOCK_FREE)
+                {
                     best->empty.insert(make_pair(x, y));
                 }
             }
         }
     }
 
-    void prepare_tasks(ArrayMap &map, unsigned int max) {
+    void prepare_tasks(ArrayMap &map, unsigned int max)
+    {
         solve_bfs(&map, 0, info->startUncovered);
 
-        while (dataQueue.size() < max) {
+        while (dataQueue.size() < max)
+        {
             QueueItem item = dataQueue.front();
             dataQueue.pop_front();
             solve_bfs(&item.map, item.price, item.uncovered);
         }
     }
 
-    void printMap(const ArrayMap &matrix, const int &cx, const int &cy, const int &price, const int &uncovered) const {
-        cout << "X: " << cx << " Y: " << cy << " P: " << price << " B: " << best->price <<
-             " U: " << uncovered << endl;
+    void printMap(const ArrayMap &matrix, const int &cx, const int &cy, const int &price, const int &uncovered) const
+    {
+        cout << "X: " << cx << " Y: " << cy << " P: " << price << " B: " << best->price << " U: " << uncovered << endl;
         cout << matrix << endl;
     }
-
 };
 
 // -----------------------------------------------------------------------------------------------------------------
 
-MapInfo *load(istream &is) {
+MapInfo *load(istream &is)
+{
     int rows, columns, i1, i2, c1, c2, cn, k;
 
     is >> rows >> columns;
@@ -431,7 +493,8 @@ MapInfo *load(istream &is) {
 
     MapInfo *mapInfo = new MapInfo(rows, columns, i1, i2, c1, c2, cn, k);
     int x, y;
-    for (int i = 0; i < k; i++) {
+    for (int i = 0; i < k; i++)
+    {
         is >> x >> y;
         mapInfo->addBanned(x, y);
     }
@@ -439,7 +502,8 @@ MapInfo *load(istream &is) {
     return mapInfo;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     MPI_Init(&argc, &argv); // inicializace MPI knihovny
 
     int proc_num, num_procs;
@@ -448,26 +512,70 @@ int main(int argc, char **argv) {
 
     MapInfo *mapInfo;
 
-    if (argc == 2) {    //load from file
+    if (argc >= 2)
+    { //load from file
         ifstream ifile(argv[1], ios::in);
-        if (ifile) {
+        if (ifile)
+        {
             mapInfo = load(ifile);
-        } else {
+        }
+        else
+        {
             cout << "Problem with opening file. Exit." << endl;
             return -1;
         }
         ifile.close();
-    } else {
+    }
+    else
+    {
         cout << "NO FILE PROVIDED" << endl;
         return -1;
         // mapInfo = load(cin);
     }
-    Solver solver(mapInfo);
-    solver.solve();
 
-    if (proc_num == 0) {
-        cout << *solver.best;
+    int max_threads;
+    if (argc > 2)
+    {
+        std::istringstream iss(argv[2]);
+
+        if (iss >> max_threads)
+        {            
+            if (proc_num != 0)
+            {
+                const int maxNumThreads = omp_get_max_threads();
+                if (max_threads > maxNumThreads)
+                    max_threads = maxNumThreads;
+
+                omp_set_num_threads(max_threads);
+            }
+        }
+        else
+        {
+            cout << "Provided number of threads is invalid. EXIT" << endl;
+            return -2;
+        }
     }
+
+    Solver solver(mapInfo);
+
+    if (proc_num == 0)
+    {
+        auto t1 = MPI_Wtime();
+        solver.solve();
+        auto t2 = MPI_Wtime();
+#ifdef TIMEONLY
+        cout << t2 - t1 << endl;
+
+#else
+        cout << *solver.best;
+        cout << "Time: " << t2 - t1 << endl;
+#endif
+    }
+    else
+    {
+        solver.solve();
+    }
+
     delete mapInfo;
 
     MPI_Finalize();
