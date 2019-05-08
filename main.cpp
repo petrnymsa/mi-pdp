@@ -121,8 +121,8 @@ public:
     int num_threads;
     // int num_procs;
 
-    Solver(MapInfo *mapInfo)
-            : best(nullptr), info(mapInfo) {
+    Solver(MapInfo *mapInfo, const int & threads)
+            : best(nullptr), num_threads(threads), info(mapInfo) {
     }
 
     void solve() {
@@ -155,7 +155,7 @@ private:
         best = new SolverResult(map);
 
         // prepare data with BFS
-        const unsigned int max = 40;
+        const unsigned int max = num_procs * 1.5f;
         cout << "PREPARE " << max << endl;
         prepare_tasks(map, max, 0, info->startUncovered);
 
@@ -260,7 +260,7 @@ private:
             best = new SolverResult(bestPrice, map);
 
             // Prepare BFS
-            const unsigned int max = 40;
+            const unsigned int max = num_threads * 2;
             prepare_tasks(map, max, price, uncovered);
 
             // Paralell FOR
@@ -470,7 +470,7 @@ int main(int argc, char **argv) {
         omp_set_num_threads(threads);
     }
 
-    Solver solver(mapInfo);
+    Solver solver(mapInfo, threads);
 
     if (proc_num == 0) {
         // auto t1 = MPI_Wtime();
