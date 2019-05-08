@@ -17,7 +17,9 @@ using namespace std;
 
 #define TAG_WORK 1
 #define TAG_END 2
+#define TAG_UPDATE 3
 #define TAG_DONE 4
+
 
 // ------------------------------------------------------------------------------------------------------------------
 class SolverResult {
@@ -121,7 +123,7 @@ public:
     int num_threads;
     // int num_procs;
 
-    Solver(MapInfo *mapInfo, const int & threads)
+    Solver(MapInfo *mapInfo, const int &threads)
             : best(nullptr), num_threads(threads), info(mapInfo) {
     }
 
@@ -161,6 +163,7 @@ private:
 
         int workers = num_procs - 1;
         int initialWorkers = workers;
+        set<int> aliveWorkers = set<int>();
         // initial send of work
 #ifdef DEBUG
         cout << "MASTER - initial-send-to-work, workers" << workers << ", works to do: " << dataQueue.size() << endl;
@@ -176,6 +179,8 @@ private:
             cout << "MASTER - initial work sended to " << workerId << endl;
 #endif
             delete[] dataInfo.second;
+
+            aliveWorkers.insert(workerId);
         }
 
         // repair workers -- that can happen only when initial work was << than number of workers
@@ -183,49 +188,78 @@ private:
         int bufferSize = map.serialize_size() + 1; // result from worker -- this can have always same size
         while (workers > 0) {
             vector<int> buffer(bufferSize);
-#ifdef DEBUG
-            cout << "MASTER - waiting for slaves " << endl;
-#endif
+
             MPI_Status status; // wait for result from some slave
             MPI_Recv(buffer.data(), bufferSize, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-            int n = info->columns * info->rows;
-            int nextId = buffer[n];
-            int x = buffer[n + 1];
-            int y = buffer[n + 2];
-            int bestPriceUpdate = buffer[n + 3];
+            if(status.MPI_TAG == TAG_DONE) {
 
-            //update best price
-            // update best map
-            if (bestPriceUpdate > best->price) {
-#ifdef DEBUG
-                cout << "MASTER - update PRICE to " << bestPriceUpdate << endl;
-#endif
-                best->map = ArrayMap(buffer.data(), info->rows, info->columns, nextId, x, y);
-                best->price = bestPriceUpdate;
-            }
+                int n = info->columns * info->rows;
+                int nextId = buffer[n];
+                int x = buffer[n + 1];
+                int y = buffer[n + 2];
+                int bestPriceUpdate = buffer[n + 3];
 
-            if (!dataQueue.empty()) { //more work
+                //update best price
+                // update best map
+                if (bestPriceUpdate > best->price) {
 #ifdef DEBUG
-                cout << "MASTER - sending work to " << status.MPI_SOURCE << endl;
+                    cout << "MASTER - update PRICE to " << bestPriceUpdate << " from slave: " << status.MPI_SOURCE << endl;
 #endif
-                QueueItem task = dataQueue.front();
-                dataQueue.pop_front();
-                // prepare task
-                pair<int, int *> dataInfo = task.serialize(best->price);
-                MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
+                    best->map = ArrayMap(buffer.data(), info->rows, info->columns, nextId, x, y);
+                    best->price = bestPriceUpdate;
+
+                    //send non-blocking message that price got updated to others
+                    for (const auto &wid : aliveWorkers) {
+                        if (wid != status.MPI_SOURCE) {
+                            MPI_Request request;
+                            int copy = bestPriceUpdate;
+                            MPI_Isend(&copy, 1, MPI_INT, wid, TAG_UPDATE, MPI_COMM_WORLD, &request);
 #ifdef DEBUG
-                cout << "MASTER - sended work to " << status.MPI_SOURCE << endl;
+                            cout << "MASTER - sended updated price to slave: " << wid << endl;
 #endif
-                delete[] dataInfo.second;
-            } else {                  // no more work -- finish
-                int dummy = 1; // ???
+                        }
+                    }
+                }
+
+                if (!dataQueue.empty()) { //more work
+                    QueueItem task = dataQueue.front();
+                    dataQueue.pop_front();
+                    // prepare task
+                    pair<int, int *> dataInfo = task.serialize(best->price);
+                    MPI_Send(dataInfo.second, dataInfo.first, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
+
+                    delete[] dataInfo.second;
+                } else {                  // no more work -- finish
+                    int dummy = 1;
 #ifdef DEBUG
-                cout << "MASTER - no more work for " << status.MPI_SOURCE << endl;
+                    cout << "MASTER - no more work for " << status.MPI_SOURCE << endl;
 #endif
-                MPI_Send(&dummy, 1, MPI_INT, status.MPI_SOURCE, TAG_END, MPI_COMM_WORLD);
-                workers--;
+                    MPI_Send(&dummy, 1, MPI_INT, status.MPI_SOURCE, TAG_END, MPI_COMM_WORLD);
+                    workers--;
+
+                    aliveWorkers.erase(status.MPI_SOURCE);
+                }
             }
+            else if(status.MPI_TAG == TAG_UPDATE){
+//                int updatedPrice = buffer[0];
+//                if (updatedPrice > best->price) {
+//                    best->price = updatedPrice; //todo note that map is not updated, but map is not printed
+//                    //send non-blocking message that price got updated to others
+//                    for (const auto &wid : aliveWorkers) {
+//                        if (wid != status.MPI_SOURCE) {
+//                            MPI_Request request;
+//                            int copy = updatedPrice;
+//                            MPI_Isend(&copy, 1, MPI_INT, wid, TAG_UPDATE, MPI_COMM_WORLD, &request);
+//#ifdef DEBUG
+//                            cout << "MASTER - sended updated price from: " << status.MPI_SOURCE << " to: " << wid << endl;
+//#endif
+//                        }
+//                    }
+//                }
+
+            }
+            else cout << "MASTER - UNKNOWN tag"<< endl;
         }
 #ifdef DEBUG
         cout << "MASTER -- quit " << workers << endl;
@@ -234,9 +268,7 @@ private:
 
     void slave(const int &id) {
         int bufferSize = info->columns * info->rows + 6;
-#ifdef DEBUG
-        cout << "SLAVE:= " << id << " started" << endl;
-#endif
+
         while (true) {
             std::vector<int> buffer(bufferSize);
 
@@ -266,10 +298,10 @@ private:
             // Paralell FOR
             unsigned long i = 0;
             unsigned long queueSize = dataQueue.size();
-            #pragma omp parallel for private(i) schedule(static) shared(info, best)
+#pragma omp parallel for private(i) schedule(static) shared(info, best)
             for (i = 0; i < queueSize; i++) {
                 QueueItem item;
-                #pragma omp critical
+#pragma omp critical
                 {
                     item = dataQueue.front();
                     dataQueue.pop_front();
@@ -287,9 +319,9 @@ private:
 
             data[mapSerialize.first] = best->price;
             MPI_Send(data, size, MPI_INT, 0, TAG_DONE, MPI_COMM_WORLD);
-#ifdef DEBUG
-            cout << "SLAVE:= " << id << " - sending DONE_UPDATE OK" << endl;
-#endif
+//#ifdef DEBUG
+//            cout << "SLAVE:= " << id << " - sending DONE ok" << endl;
+//#endif
             delete[] mapSerialize.second;
             delete[] data;
         }
@@ -328,17 +360,37 @@ private:
     void solve_dfs(const int &id, ArrayMap *map, int price, int uncovered) {
         int upperPrice = info->computeUpperPrice(uncovered);
 
+        //todo check for better price -- direction MASTER => Slave
+        MPI_Status status;
+        int flag;
+        MPI_Iprobe(0, TAG_UPDATE, MPI_COMM_WORLD, &flag, &status);
+
+        if (flag) {
+            //got update
+            int update;
+#ifdef  DEBUG
+
+#endif
+            MPI_Recv(&update, 1, MPI_INT, 0, TAG_UPDATE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            best->price = update;
+            cout << "Slave:" << id << " got updated price=" << update << endl;
+        }
+
         if (price + upperPrice <= best->price)
             return;
         if (best->price == info->optimPrice)
             return;
 
         if (price + info->cn * uncovered > best->price) {
-            #pragma omp critical
+#pragma omp critical
             {
                 if (price + info->cn * uncovered > best->price) {
                     best->map = *map;
                     best->price = price + info->cn * uncovered;
+
+                    //TODO send updated price to master
+                   // cout << "Slave: " << id << "found better price=" << best->price << endl;
+                   //slave_sendUpdate(best->price);
                 }
             }
         }
@@ -377,6 +429,11 @@ private:
             map->nextFree();
             solve_dfs(id, map, price, uncovered);
         }
+    }
+
+    void slave_sendUpdate(int price) {
+        MPI_Request request;
+        MPI_Isend(&price, 1, MPI_INT, 0, TAG_UPDATE, MPI_COMM_WORLD, &request);
     }
 
     void FindLeftEmptyTiles() const { //Find left empty tiles
@@ -427,7 +484,16 @@ MapInfo *load(istream &is) {
 }
 
 int main(int argc, char **argv) {
-    MPI_Init(&argc, &argv); // inicializace MPI knihovny
+    // MPI_Init(&argc, &argv); // inicializace MPI knihovny
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
+
+
+    if (provided != MPI_THREAD_MULTIPLE) {
+        cout << "cant go on. Provided only: " << provided << endl;
+        MPI_Finalize();
+        return -1;
+    }
 
     int proc_num, num_procs;
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
